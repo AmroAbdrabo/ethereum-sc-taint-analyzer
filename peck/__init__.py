@@ -1,0 +1,2 @@
+class PeckError(Exception):
+    pass
