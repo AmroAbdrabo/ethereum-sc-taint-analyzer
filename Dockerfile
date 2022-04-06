@@ -67,3 +67,5 @@ RUN pip3 install -e .
 # run code
 COPY project ./project
 WORKDIR /root/project
+
+CMD ["/bin/bash"]
