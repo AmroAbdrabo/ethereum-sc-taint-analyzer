@@ -141,10 +141,15 @@ goto(id_transfer_from_to_block, id_block_to, id_block_continuation) :-
     jump(id_transfer, id_block_from, id_block_to, id_continuation), return(id_transfer_from_to_block, id_block_to).
 
 // Block reachability (under the assumption that blocks can only be reached via jumps or returns)
-.decl isReachableFrom(id_block_from: Block, id_block_to: Block) :- goto(_, id_block_from, id_block_to). 
+.decl isReachableFrom(id_block_from: Block, id_block_to: Block) 
+
+isReachableFrom(id_block_from, id_block_to) :- goto(_, id_block_from, id_block_to). 
 
 // Transitive closure of block reachability
-.decl isReachableFrom(id_block_from: Block, id_block_to: Block) :- goto(_, id_block_from, id_block_middle), goto(_, id_block_middle, id_block_to) . 
+isReachableFrom(id_block_from, id_block_to) :- goto(_, id_block_from, id_block_middle), goto(_, id_block_middle, id_block_to). 
+
+// bop with comparisons maybe guards
+.decl maybeGuard(id_transfer: Transfer, id_stmt : SSA)
 
 
 tainted_sinks(id) :- selfdestruct(id,_).
