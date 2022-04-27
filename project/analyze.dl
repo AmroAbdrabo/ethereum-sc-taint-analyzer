@@ -124,14 +124,38 @@ msgSender(id) :- builtinVariable(id, "SENDER").
 
 // Your code goes here...
 
+.decl blockFollows(id_block_from: Block, id_block_to: Block)
+// There is a follows relation b/w blocks in case of 1: goto 2: branch 3: jump 
+blockFollows(id_block_from, id_block_to) :- goto(_, id_block_from, id_block_to).
+blockFollows(id_block_from, id_block_to) :-  branch(_, _, id_block_from, id_block_to, _, _); 
+                                             branch(_, _, id_block_from, _, id_block_to, _).
+blockFollows(id_block_from, id_block_to) :- jump(_,id_block_from, id_block_to,_); 
+                                            jump(_,_,id_block_from, id_block_to). 
+
+// Transitive closure
+blockFollows(id_block_from, id_block_to) :- blockFollows(id_block_from, id_block_mid),blockFollows(id_block_mid, id_block_to). 
+
+// Dominance relation
+.decl blockDominates(id_block_top: Block, id_block_bottom: Block)
+
+// blockDominates is blockFollows(top, bottom), !(blockFollows(mid, bottom), !blockDominates(top, mid))
+// There not to exist some fact X, build a relation that generates all facts that are X (call relation R). Then
+// blockDom :- .....!R(x) 
+.decl notFollows(top: block, bottom: blocl)
+
+notFollows(top, bottom) :- blockFollows()
+blockDominates(top, bottom) :-  blockFollows(top, bottom), !(blockFollows(mid, bottom), mid != top).
+blockDominates(top, bottom) :- blockDominates(top, mid), blockDominates(mid, bottom).
+                                        
+
 // Translate the branch into two gotos (makes reachability logic more doable)
-goto(id_transfer_true, id_block_from, id_block_true), goto(id_transfer_true, id_block_from, id_block_false) :- branch(id_transfer_true,
+/* goto(id_transfer_true, id_block_from, id_block_true), goto(id_transfer_true, id_block_from, id_block_false) :- branch(id_transfer_true,
              id_transfer_false,
              id_block_from,
              id_block_true,
              id_block_false,
-             var_cond_id).
-
+             var_cond_id). */
+/* 
 // A block you jump to via a function call (see 8.sol, e.g. check(z))  
 goto(id_transfer, id_block_from, id_block_to) :- 
     jump(id_transfer, id_block_from, id_block_to, id_continuation).
@@ -149,9 +173,18 @@ isReachableFrom(id_block_from, id_block_to) :- goto(_, id_block_from, id_block_t
 isReachableFrom(id_block_from, id_block_to) :- goto(_, id_block_from, id_block_middle), goto(_, id_block_middle, id_block_to). 
 
 // bop with comparisons maybe guards
-.decl maybeGuard(id_transfer: Transfer, id_stmt : SSA)
+.decl maybeGuardSSA(id_stmt : SSA, id_lhs: SSA, id_rhs: SSA)
 
 
-tainted_sinks(id) :- selfdestruct(id,_).
+// an SSA whose value is used for branching is a guard condition if its value is dervied from two SSA one of whom must be SENDER 
+maybeGuardSSA(id, id_rhs, id_lhs) :- branch(_, _, _, _, _, id), bop(id, id_lhs, id_rhs, op), 
+    match("==", op), (builtinVariable(id_lhs, sender);builtinVariable(id_rhs, sender)), match("SENDER", sender) 
+ */
+
+.decl isTainted(x: SSA)
+
+
+tainted_sinks(id) :- selfdestruct(id, address), isTainted(address).
 
 .output tainted_sinks
+.output blockDominates
