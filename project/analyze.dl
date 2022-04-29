@@ -163,12 +163,34 @@ notDominates(top, bottom) :- blockFollows(mid, bottom), blockFollows(mid, top), 
 blockDominates(top, bottom) :- block(top), block(bottom), top != bottom, !notDominates(top, bottom).
 
 // If a block is a guard
-//.declare guardSSA(id: SSA)
+.decl guardSSA(id: SSA)
+.decl hasGuardSSA(block: Block)
+.decl isMsgSender(id: SSA)
+.decl isUntainted(id: SSA)
+.decl tainted(id: SSA)
 
-//guardSSA(id) :- branch(_, _, _, _, _, id), bop(id, id_lhs, id_rhs, op),
- //               (builtinVariable(id_lhs, "SENDER");builtinVariable(id_rhs, "SENDER")), match("SENDER", sender) 
+// a value is tainted if it implicity depends on tainted value, it is from user input, 
+
+isMsgSender(id) :-  builtinVariable(id, "SENDER").
+isMsgSender(id) :-  assign(id, orig), builtinVariable(orig, "SENDER").
+
+// not tainted if it is a statement derived from another statement, which is itself untainted
+isUntainted(id) :- statement(id), statement(orig), assign(id, orig), isUntainted(orig).
+// not tainted if it is a constant
+isUntainted(id) :- statement(id), const(id, _).
 
 
+
+guardSSA(id) :- branch(_, _, _, _, _, id), bop(id, id_lhs, id_rhs, op), 
+                ( 
+                    (isMsgSender(id_lhs), isUntainted(id_rhs));
+                    (isMsgSender(id_rhs), isUntainted(id_lhs))
+                ).
+
+hasGuardSSA(block) :- guardSSA(id), blockStmt(block, id).
+
+// If an SSA occurs in a block that is dominated by a sanitized (guarded) block, then it is untainted
+isUntainted(id) :- blockStmt(dominator, id), blockDominates(dominator, dominated), hasGuardSSA(dominator).
                                         
 
 // Translate the branch into two gotos (makes reachability logic more doable)
