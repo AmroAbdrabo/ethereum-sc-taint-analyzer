@@ -30,7 +30,7 @@ def visualize(compile_output, contract_graph, contract_facts, *, output_dir):
         compile_output.cfg,
         file=output_dir / "graph",
         format='pdf',
-        only_blocks=True)
+        only_blocks = True)
 
     # Dump abstract syntax tree returned by the Solidity compiler.
     #with open(output_dir / "ast.json", 'wt') as f:

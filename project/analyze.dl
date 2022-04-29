@@ -132,20 +132,38 @@ blockFollows(id_block_from, id_block_to) :-  branch(_, _, id_block_from, id_bloc
 blockFollows(id_block_from, id_block_to) :- jump(_,id_block_from, id_block_to,_); 
                                             jump(_,_,id_block_from, id_block_to). 
 
-// Transitive closure
-blockFollows(id_block_from, id_block_to) :- blockFollows(id_block_from, id_block_mid),blockFollows(id_block_mid, id_block_to). 
+// Transitive closure (blockFollows is only for single hops)
+.decl blockFollowsTransitive(id_block_from: Block, id_block_to: Block) 
+blockFollowsTransitive(from, to) :- blockFollows(from, to). 
+blockFollowsTransitive(from, to) :- blockFollowsTransitive(from, mid), blockFollows(mid, to).
+
+ 
 
 // Dominance relation
 .decl blockDominates(id_block_top: Block, id_block_bottom: Block)
 
 // blockDominates is blockFollows(top, bottom), !(blockFollows(mid, bottom), !blockDominates(top, mid))
-// There not to exist some fact X, build a relation that generates all facts that are X (call relation R). Then
+// In order for there not to exist some fact X, build a relation that generates all facts that are X (call relation R). Then
 // blockDom :- .....!R(x) 
-.decl notFollows(top: block, bottom: blocl)
 
-notFollows(top, bottom) :- blockFollows()
-blockDominates(top, bottom) :-  blockFollows(top, bottom), !(blockFollows(mid, bottom), mid != top).
-blockDominates(top, bottom) :- blockDominates(top, mid), blockDominates(mid, bottom).
+
+// block top dominates bottom if bottom follows from top and for all nodes mid, 
+// either top dominates mid, or top does not dominates mid and bottom does not follow from mid
+// the universal quantifier can be negated as: there exists a node s.t. top does not dominate mid AND bottom follows from mid 
+// THe problem is that all variables that appear in the body but not head are quantified existentially 
+.decl notDominates(top: Block, bottom: Block)
+
+notDominates(top, bottom) :- notDominates(top, mid), blockFollows(mid, bottom).
+notDominates(top, bottom) :- !blockFollowsTransitive(top, bottom).
+notDominates(top, bottom) :- blockFollows(mid, bottom), blockFollows(mid, top).
+
+//blockDominates(top, bottom) :-  blockFollows(top, bottom), !(blockFollowsTransitive(mid, bottom), !blockDominates(mid, top)).
+blockDominates(top, bottom) :- !notDominates(top, bottom).
+
+// If a block is sanitized
+//.decl isSanitized(id_block: Block)
+
+
                                         
 
 // Translate the branch into two gotos (makes reachability logic more doable)
@@ -181,10 +199,10 @@ maybeGuardSSA(id, id_rhs, id_lhs) :- branch(_, _, _, _, _, id), bop(id, id_lhs, 
     match("==", op), (builtinVariable(id_lhs, sender);builtinVariable(id_rhs, sender)), match("SENDER", sender) 
  */
 
-.decl isTainted(x: SSA)
+//.decl isTainted(x: SSA)
 
 
-tainted_sinks(id) :- selfdestruct(id, address), isTainted(address).
+tainted_sinks(id) :- selfdestruct(id, address).//, isTainted(address).
 
 .output tainted_sinks
 .output blockDominates
