@@ -153,15 +153,20 @@ blockFollowsTransitive(from, to) :- blockFollowsTransitive(from, mid), blockFoll
 // THe problem is that all variables that appear in the body but not head are quantified existentially 
 .decl notDominates(top: Block, bottom: Block)
 
-notDominates(top, bottom) :- notDominates(top, mid), blockFollows(mid, bottom).
-notDominates(top, bottom) :- !blockFollowsTransitive(top, bottom).
-notDominates(top, bottom) :- blockFollows(mid, bottom), blockFollows(mid, top).
-
+notDominates(top, bottom) :- notDominates(top, mid), blockFollows(mid, bottom), bottom != top.
+// 3, 4 :- 3, * & * , 4
+notDominates(top, bottom) :- block(top), block(bottom), top != bottom, !blockFollowsTransitive(top, bottom).
+// 3, 4 :- 3 != 4, 
+notDominates(top, bottom) :- blockFollows(mid, bottom), blockFollows(mid, top), bottom != top.
+// 3, 4 :- *, 4 & *, 3  
 //blockDominates(top, bottom) :-  blockFollows(top, bottom), !(blockFollowsTransitive(mid, bottom), !blockDominates(mid, top)).
-blockDominates(top, bottom) :- !notDominates(top, bottom).
+blockDominates(top, bottom) :- block(top), block(bottom), top != bottom, !notDominates(top, bottom).
 
-// If a block is sanitized
-//.decl isSanitized(id_block: Block)
+// If a block is a guard
+//.declare guardSSA(id: SSA)
+
+//guardSSA(id) :- branch(_, _, _, _, _, id), bop(id, id_lhs, id_rhs, op),
+ //               (builtinVariable(id_lhs, "SENDER");builtinVariable(id_rhs, "SENDER")), match("SENDER", sender) 
 
 
                                         
@@ -206,3 +211,6 @@ tainted_sinks(id) :- selfdestruct(id, address).//, isTainted(address).
 
 .output tainted_sinks
 .output blockDominates
+.output blockFollows
+.output blockFollowsTransitive
+.output notDominates
