@@ -166,31 +166,45 @@ blockDominates(top, bottom) :- block(top), block(bottom), top != bottom, !notDom
 .decl guardSSA(id: SSA)
 .decl hasGuardSSA(block: Block)
 .decl isMsgSender(id: SSA)
-.decl isUntainted(id: SSA)
+.decl taintedSSA(id: SSA)
+.decl taintedStorage(field: Name)
 .decl tainted(id: SSA)
 
 // a value is tainted if it implicity depends on tainted value, it is from user input, 
 
 isMsgSender(id) :-  builtinVariable(id, "SENDER").
-isMsgSender(id) :-  assign(id, orig), builtinVariable(orig, "SENDER").
+isMsgSender(id) :-  assign(id, orig), isMsgSender(orig).
 
 // not tainted if it is a statement derived from another statement, which is itself untainted
-isUntainted(id) :- statement(id), statement(orig), assign(id, orig), isUntainted(orig).
-// not tainted if it is a constant
-isUntainted(id) :- statement(id), const(id, _).
+taintedSSA(id) :- assign(id, orig), taintedSSA(orig).
+taintedSSA(id) :- load(id, field), taintedStorage(field). 
+taintedSSA(id) :- assign(id, orig), match("A.*", orig).
+// not tainted if statement is the value of a state variable 
 
+// tainted storage if it is assigned anything (over approximating for now. TODO: fix this to not over approx)
+taintedStorage(field) :- store(_, field, id_from), taintedSSA(id_from).
+taintedStorage(field) :- store(_, field, id_from), (match("A.*", id_from); taintedSSA(id_from)). // still missing ordering of guards
+// taintedStorage > guardSSA (if u include the not of guardSSA inside the body of tainStora)
+// taintdSSA >= taintedStorage
+// guardSSA > taintedSSA  
 
-
-guardSSA(id) :- branch(_, _, _, _, _, id), bop(id, id_lhs, id_rhs, op), 
+// id is the id of the SSA of the condition on which the branch bifurcates
+guardSSA(id) :- branch(_, _, _, _, _, id), bop(id, id_lhs, id_rhs, _), 
                 ( 
-                    (isMsgSender(id_lhs), isUntainted(id_rhs));
-                    (isMsgSender(id_rhs), isUntainted(id_lhs))
+                    (isMsgSender(id_lhs), !taintedSSA(id_rhs));
+                    (isMsgSender(id_rhs), !taintedSSA(id_lhs))
                 ).
 
 hasGuardSSA(block) :- guardSSA(id), blockStmt(block, id).
 
+.decl unguardedTaintedSSA(id: SSA)
+.decl unguardedTaintedStorage(field: Name)
+
+unguardedTaintedSSA(id) :- taintedSSA(id), blockStmt(block, id), !hasGuardSSA(block).
+unguardedTaintedStorage(field) :- taintedStorage(field), store(id, field, _), blockStmt(block, id), !hasGuardSSA(block). 
+
 // If an SSA occurs in a block that is dominated by a sanitized (guarded) block, then it is untainted
-isUntainted(id) :- blockStmt(dominator, id), blockDominates(dominator, dominated), hasGuardSSA(dominator).
+//isUntainted(id) :- ((blockStmt(dominated, id), blockDominates(dominator, dominated)); blockStmt(dominator, id)), hasGuardSSA(dominator).
                                         
 
 // Translate the branch into two gotos (makes reachability logic more doable)
@@ -236,3 +250,8 @@ tainted_sinks(id) :- selfdestruct(id, address).//, isTainted(address).
 .output blockFollows
 .output blockFollowsTransitive
 .output notDominates
+.output hasGuardSSA
+.output unguardedTaintedSSA
+.output guardSSA
+.output taintedSSA
+.output taintedStorage
