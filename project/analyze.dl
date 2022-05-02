@@ -159,13 +159,60 @@ fields(field) :- load(_, field).
 fields(field) :- store(_, field, _).
 
 
+//.decl constructorBlock(block: Block)
+//constructorBlock(block) :- function(block, "Constructor").
 
 .type BlkList = [next: BlkList, blk: Block]
-.decl context(size: number, history: BlkList)
+.type storageState = [varId: Name, valtype: symbol] // source can be "const", "arg"
+.type storageStateList = [next: storageStateList, head: storageState] // should have length nbr of state variables
 
-context(0, [nil, blk]) :- block(blk).
-context(size+1, [hist, blk]) :- context(size, hist), block(blk), size < 2.
 
+.decl startBlock(blk: Block) // blocks that are the start of functions, constructors
+.decl context(depth: number, history: BlkList)
+.decl storeHistory(history: BlkList, storedState: storageStateList, blockDepth: number)
+.decl initial_stored_state(stored_state: storageStateList, cnt_state_vars: number)
+.decl countStateVariables(cnt: number)
+
+// nbr of state variables
+countStateVariables(c) :- c = count:{fields(_)}.
+
+.type IntList = [next: IntList, x: number]
+.decl L(l: IntList)
+L([nil,10]).
+L([r1,x+10]) :- L(r1), r1=[r2,x], x < 30.
+.decl Flatten(x: number)
+Flatten(x) :- L([_,x]).
+.output L
+
+
+// base cases for store history
+initial_stored_state(nil, 0).    // a fact (with zero state variables, the list of states is nil)
+initial_stored_state([storage_state_prev_list, [new_head, "const"]], x+1) :- initial_stored_state(storage_state_prev_list, x),  // now deconstruct  storageStatePrev
+                                           ((storage_state_prev_list = [s, [prev_head, "const"]],
+                                           ord(new_head) > ord(prev_head)); x=0), 
+                                           fields(new_head), // everything is constant at the beginning
+                                           countStateVariables(c), x < c. 
+.output initial_stored_state
+.output countStateVariables
+/*startBlock(blk) :- function(blk, _). 
+storeHistory(blklist, stored_state, block_depth) :- block_depth = 0, function(blk, "Constructor"), blklist = [nil, blk], stored_state =[nil,].
+storeHistory(blklist, stored_state, block_depth) :- block_depth = 1, startBlock(blk),
+                                                    function(blk, fname), fname != "Constructor",
+                                                    blklist = [[nil, "Constructor"], blk].
+storeHistory(blklist, stored_state, block_depth + 1) :- storeHistory() 
+*/
+
+
+
+//context(0, [nil, blk]) :- block(blk).
+//context(size+1, [hist, blk]) :- context(size, hist), block(blk), size < 2.
+
+
+//initStorage([nil, [fiedlId, "cosnt"]]) :-  function(/..), field(fiedlId) 
+
+
+//initStorage([nil, [field, valType]]) :- constructor(..), field(fieldId)
+//initStorage(newLIst) :- initStorage(field), field = [nil, [field, valType]], newList = [, []]
 
 
 // context(size, hist) :- context(size-1, hist), size < 3.
