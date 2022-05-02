@@ -137,41 +137,42 @@ blockFollows(id_block_from, id_block_to) :- jump(_,id_block_from, id_block_to,_)
 blockFollowsTransitive(from, to) :- blockFollows(from, to). 
 blockFollowsTransitive(from, to) :- blockFollowsTransitive(from, mid), blockFollows(mid, to).
 
- 
-
-// Dominance relation
-.decl blockDominates(id_block_top: Block, id_block_bottom: Block)
-
-// blockDominates is blockFollows(top, bottom), !(blockFollows(mid, bottom), !blockDominates(top, mid))
-// In order for there not to exist some fact X, build a relation that generates all facts that are X (call relation R). Then
-// blockDom :- .....!R(x) 
-
-
-// block top dominates bottom if bottom follows from top and for all nodes mid, 
-// either top dominates mid, or top does not dominates mid and bottom does not follow from mid
-// the universal quantifier can be negated as: there exists a node s.t. top does not dominate mid AND bottom follows from mid 
-// THe problem is that all variables that appear in the body but not head are quantified existentially 
+// Dominance relation between blocks
 .decl notDominates(top: Block, bottom: Block)
-
 notDominates(top, bottom) :- notDominates(top, mid), blockFollows(mid, bottom), bottom != top.
-// 3, 4 :- 3, * & * , 4
 notDominates(top, bottom) :- block(top), block(bottom), top != bottom, !blockFollowsTransitive(top, bottom).
-// 3, 4 :- 3 != 4, 
 notDominates(top, bottom) :- blockFollows(mid, bottom), blockFollows(mid, top), bottom != top.
-// 3, 4 :- *, 4 & *, 3  
-//blockDominates(top, bottom) :-  blockFollows(top, bottom), !(blockFollowsTransitive(mid, bottom), !blockDominates(mid, top)).
+
+.decl blockDominates(id_block_top: Block, id_block_bottom: Block)
 blockDominates(top, bottom) :- block(top), block(bottom), top != bottom, !notDominates(top, bottom).
 
 // If a block is a guard
 .decl guardSSA(id: SSA)
 .decl hasGuardSSA(block: Block)
-.decl isMsgSender(id: SSA)
 .decl taintedSSA(id: SSA)
 .decl taintedStorage(field: Name)
-.decl tainted(id: SSA)
 
-// a value is tainted if it implicity depends on tainted value, it is from user input, 
 
+// Helper relation listing all fields
+.decl fields(field: Name)
+fields(field) :- load(_, field).
+fields(field) :- store(_, field, _).
+
+
+
+.type BlkList = [next: BlkList, blk: Block]
+.decl context(size: number, history: BlkList)
+
+context(0, [nil, blk]) :- block(blk).
+context(size+1, [hist, blk]) :- context(size, hist), block(blk), size < 2.
+
+
+
+// context(size, hist) :- context(size-1, hist), size < 3.
+
+
+// 
+.decl isMsgSender(id: SSA)
 isMsgSender(id) :-  builtinVariable(id, "SENDER").
 isMsgSender(id) :-  assign(id, orig), isMsgSender(orig).
 
@@ -183,10 +184,8 @@ taintedSSA(id) :- assign(id, orig), match("A.*", orig).
 
 // tainted storage if it is assigned anything (over approximating for now. TODO: fix this to not over approx)
 taintedStorage(field) :- store(_, field, id_from), taintedSSA(id_from).
-taintedStorage(field) :- store(_, field, id_from), (match("A.*", id_from); taintedSSA(id_from)). // still missing ordering of guards
-// taintedStorage > guardSSA (if u include the not of guardSSA inside the body of tainStora)
-// taintdSSA >= taintedStorage
-// guardSSA > taintedSSA  
+taintedStorage(field) :- store(_, field, id_from), (match("A.*", id_from); taintedSSA(id_from)).
+
 
 // id is the id of the SSA of the condition on which the branch bifurcates
 guardSSA(id) :- branch(_, _, _, _, _, id), bop(id, id_lhs, id_rhs, _), 
@@ -203,47 +202,9 @@ hasGuardSSA(block) :- guardSSA(id), blockStmt(block, id).
 unguardedTaintedSSA(id) :- taintedSSA(id), blockStmt(block, id), !hasGuardSSA(block).
 unguardedTaintedStorage(field) :- taintedStorage(field), store(id, field, _), blockStmt(block, id), !hasGuardSSA(block). 
 
-// If an SSA occurs in a block that is dominated by a sanitized (guarded) block, then it is untainted
-//isUntainted(id) :- ((blockStmt(dominated, id), blockDominates(dominator, dominated)); blockStmt(dominator, id)), hasGuardSSA(dominator).
-                                        
-
-// Translate the branch into two gotos (makes reachability logic more doable)
-/* goto(id_transfer_true, id_block_from, id_block_true), goto(id_transfer_true, id_block_from, id_block_false) :- branch(id_transfer_true,
-             id_transfer_false,
-             id_block_from,
-             id_block_true,
-             id_block_false,
-             var_cond_id). */
-/* 
-// A block you jump to via a function call (see 8.sol, e.g. check(z))  
-goto(id_transfer, id_block_from, id_block_to) :- 
-    jump(id_transfer, id_block_from, id_block_to, id_continuation).
-
-// after returning from the jump you return to the block with id, id_block_continuation
-goto(id_transfer_from_to_block, id_block_to, id_block_continuation) :- 
-    jump(id_transfer, id_block_from, id_block_to, id_continuation), return(id_transfer_from_to_block, id_block_to).
-
-// Block reachability (under the assumption that blocks can only be reached via jumps or returns)
-.decl isReachableFrom(id_block_from: Block, id_block_to: Block) 
-
-isReachableFrom(id_block_from, id_block_to) :- goto(_, id_block_from, id_block_to). 
-
-// Transitive closure of block reachability
-isReachableFrom(id_block_from, id_block_to) :- goto(_, id_block_from, id_block_middle), goto(_, id_block_middle, id_block_to). 
-
-// bop with comparisons maybe guards
-.decl maybeGuardSSA(id_stmt : SSA, id_lhs: SSA, id_rhs: SSA)
 
 
-// an SSA whose value is used for branching is a guard condition if its value is dervied from two SSA one of whom must be SENDER 
-maybeGuardSSA(id, id_rhs, id_lhs) :- branch(_, _, _, _, _, id), bop(id, id_lhs, id_rhs, op), 
-    match("==", op), (builtinVariable(id_lhs, sender);builtinVariable(id_rhs, sender)), match("SENDER", sender) 
- */
-
-//.decl isTainted(x: SSA)
-
-
-tainted_sinks(id) :- selfdestruct(id, address).//, isTainted(address).
+tainted_sinks(id) :- selfdestruct(id, address).
 
 .output tainted_sinks
 .output blockDominates
@@ -255,3 +216,5 @@ tainted_sinks(id) :- selfdestruct(id, address).//, isTainted(address).
 .output guardSSA
 .output taintedSSA
 .output taintedStorage
+.output context
+.output fields
