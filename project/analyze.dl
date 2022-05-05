@@ -53,208 +53,171 @@
              id_block_from: Block,
              id_block_true: Block,
              id_block_false: Block,
-             var_cond_id: SSA)  // `var_cond_id` references the condition
-
-// Jump from a block `id_block_from` to a different function with entry block
-// `id_block_to` (i.e. a function call). The called function returns to the
-// continuation block `id_continuation` of the caller function via return
-// transfers.
+             var_cond_id: SSA) 
 .decl jump(id_transfer: Transfer,
            id_block_from: Block,
            id_block_to: Block,
            id_continuation: Block)
-
-// Return transfer (note there is no target block; if needed, this can be
-// inferred at call sites via the `id_continuation` of the jump transfer).
 .decl return(id_transfer: Transfer, id_block_from: Block)
-
-// List of arguments passed in a transfer
 .decl transferArgument(id_transfer: Transfer, id_argument_value: SSA, index: ArgIndex)
-
-// Ignore these...
-//.decl arrayStore(id: SSA, id_array: SSA, id_index: SSA, id_var: SSA)
-//.decl mapStore(id: SSA, id_map: SSA, id_key: SSA, id_var: SSA)
-//.decl arrayLoad(id: SSA, id_array: SSA, id_index: SSA)
-//.decl mapLoad(id: SSA, id_map: SSA, id_key: SSA)
-//.decl call(id_transfer: Transfer, id_block_from: Block, id_block_to: Block, id_continuation: Block)
-//.decl unknownBlock(id_block: Block)
 .decl selfdestruct(id: SSA, address: SSA)
 .decl revert(id_transfer: Transfer, id_block: Block)
 .decl builtinVariable(id: SSA, name: symbol)
 
-#ifdef ENABLE_INPUT_FROM_FILES
-.input function
-.input block
-.input blockStmt
-.input follows
-.input argument
-.input statement
-.input assign
-.input const
-.input uop
-.input bop
-.input load
-.input structLoad
-.input store
-.input structStore
-.input goto
-.input branch
-.input return
-.input jump
-.input transferArgument
-.input selfdestruct
-.input revert
-.input builtinVariable
-// Ignore these...
-//.input arrayLoad
-//.input mapLoad
-//.input arrayStore
-//.input mapStore
-//.input call
-//.input unknownBlock
-#endif
-
-
-// Helper relations
-.decl msgSender(id: SSA)
-msgSender(id) :- builtinVariable(id, "SENDER").
-
 // -- output relations --
 .decl tainted_sinks(id: SSA)
 
-// Your code goes here...
+// Useful (wallah)
+.decl msgSender(id: SSA)
+msgSender(id) :-  builtinVariable(id, "SENDER").
+msgSender(id) :-  assign(id, orig), msgSender(orig).
 
-.decl blockFollows(id_block_from: Block, id_block_to: Block)
-// There is a follows relation b/w blocks in case of 1: goto 2: branch 3: jump 
-blockFollows(id_block_from, id_block_to) :- goto(_, id_block_from, id_block_to).
-blockFollows(id_block_from, id_block_to) :-  branch(_, _, id_block_from, id_block_to, _, _); 
-                                             branch(_, _, id_block_from, _, id_block_to, _).
-blockFollows(id_block_from, id_block_to) :- jump(_,id_block_from, id_block_to,_); 
-                                            jump(_,_,id_block_from, id_block_to). 
+// Encode each state variable as a one-hot vector
+// (assuming there are 3 state variables) 100 for the first variables
+// 000 means all state variables are untainted, 100 means only first 
+// field, V00, is tainted
+.decl activate_taint(state: unsigned, field: Name)
 
-// Transitive closure (blockFollows is only for single hops)
-.decl blockFollowsTransitive(id_block_from: Block, id_block_to: Block) 
-blockFollowsTransitive(from, to) :- blockFollows(from, to). 
-blockFollowsTransitive(from, to) :- blockFollowsTransitive(from, mid), blockFollows(mid, to).
+// These inputs are generated/written by Python
+activate_taint(1, "V00").
+activate_taint(2, "V01").
+activate_taint(4, "V02").
 
-// Dominance relation between blocks
-.decl notDominates(top: Block, bottom: Block)
-notDominates(top, bottom) :- notDominates(top, mid), blockFollows(mid, bottom), bottom != top.
-notDominates(top, bottom) :- block(top), block(bottom), top != bottom, !blockFollowsTransitive(top, bottom).
-notDominates(top, bottom) :- blockFollows(mid, bottom), blockFollows(mid, top), bottom != top.
-
-.decl blockDominates(id_block_top: Block, id_block_bottom: Block)
-blockDominates(top, bottom) :- block(top), block(bottom), top != bottom, !notDominates(top, bottom).
-
-// If a block is a guard
-.decl guardSSA(id: SSA)
-.decl hasGuardSSA(block: Block)
-.decl taintedSSA(id: SSA)
-.decl taintedStorage(field: Name)
-
-
-// Helper relation listing all fields
-.decl fields(field: Name)
-fields(field) :- load(_, field).
-fields(field) :- store(_, field, _).
-
-
-//.decl constructorBlock(block: Block)
-//constructorBlock(block) :- function(block, "Constructor").
+.decl deactivate_taint(state: unsigned, field: Name) 
+// Unfortunately we only need 3 bits but datalog gives us 32 hence the need for 
+// 0b111 mask (i.e. 7)
+deactivate_taint((bnot tainted) band 7, field) :- activate_taint(tainted, field).
+// NB: 7 will be generated/written by python 
 
 .type BlkList = [next: BlkList, blk: Block]
-.type storageState = [varId: Name, valtype: symbol] // source can be "const", "arg"
-.type storageStateList = [next: storageStateList, head: storageState] // should have length nbr of state variables
+.decl program_run(executed_blks: BlkList, final_state: unsigned, guarded: unsigned) // final state after executing blklist
 
+// Now we make a relation block_taints_state_variable which contains
+// records of the form B02, 101 meaning that inside B02 there is a store of user input
+// (including msg.sender) to V00 and V02
 
-.decl startBlock(blk: Block) // blocks that are the start of functions, constructors
-.decl context(depth: number, history: BlkList)
-.decl storeHistory(history: BlkList, storedState: storageStateList, blockDepth: number)
-.decl initial_stored_state(stored_state: storageStateList, cnt_state_vars: number)
-.decl countStateVariables(cnt: number)
+// blk is the block, tainted_fields are the fields which are assigned user input inside 
+// blk, and cnt is the number of tainted variables taken into account by the relation
+.decl block_taints_state_variables(blk: Block, tainted_fields: unsigned, cnt : unsigned)
+block_taints_state_variables(blk, tainted_fields, 1) :- store(stmt, field, assigned),
+  blockStmt(blk, stmt), activate_taint(tainted_fields, field), 
+  (argument(assigned, _, _); msgSender(assigned)).
 
-// nbr of state variables
-countStateVariables(c) :- c = count:{fields(_)}.
+// Combine taints for a block
+block_taints_state_variables(blk, (tainted_fields_first bor tainted_fields_second) band 7, cnt1 + cnt2) :- 
+  block_taints_state_variables(blk, tainted_fields_first, cnt1),
+  block_taints_state_variables(blk, tainted_fields_second, cnt2),
+  cnt1+ cnt2 < 3. // Again, 3 and 7 should be generated/written by python
 
-/*.type IntList = [next: IntList, x: number]
-.decl L(l: IntList)
-L([nil,10]).
-L([r1,x+10]) :- L(r1), r1=[r2,x], x < 30.
-.decl Flatten(x: number)
-Flatten(x) :- L([_,x]).
-.output L*/
+// Unfortunately, at this point we still have a lot of relations for block_taints_state_variable 
+// of the form (blk, 110, 2) and (blk, 100, 1) but we only care about the one maximum cnt so we say (souffle 
+// does not allow witnesses for maximum so we have to create a new relation)
+.decl block_taints_not_complete(blk: Block, tainted_fields: unsigned, cnt: unsigned)
+block_taints_not_complete(blk, tainted_fields, cnt) :- block_taints_state_variables(blk, tainted_fields, cnt),
+  		block_taints_state_variables(blk, tainted_fields2, cnt2), cnt2 > cnt.
+.decl block_taints_complete(blk: Block, tainted_fields: unsigned, cnt: unsigned)
 
+// A block taints (completely) if there is no example where it is a minimum (in terms of cnt).
+block_taints_complete(blk, tainted_fields, cnt) :- block(blk), 
+  												   block_taints_state_variables(blk, tainted_fields, cnt),
+  												  !block_taints_not_complete(blk, tainted_fields, cnt).
 
-// base cases for store history
-initial_stored_state(nil, 0).    // a fact (with zero state variables, the list of states is nil)
-initial_stored_state([storage_state_prev_list, [new_head, "const"]], x+1) :- initial_stored_state(storage_state_prev_list, x),  // now deconstruct  storageStatePrev
-                                           ((storage_state_prev_list = [s, [prev_head, "const"]],
-                                           ord(new_head) > ord(prev_head)); x=0), 
-                                           fields(new_head), // everything is constant at the beginning
-                                           countStateVariables(c), x < c. 
-.output initial_stored_state
-.output countStateVariables
-/*startBlock(blk) :- function(blk, _). 
-storeHistory(blklist, stored_state, block_depth) :- block_depth = 0, function(blk, "Constructor"), blklist = [nil, blk], stored_state =[nil,].
-storeHistory(blklist, stored_state, block_depth) :- block_depth = 1, startBlock(blk),
-                                                    function(blk, fname), fname != "Constructor",
-                                                    blklist = [[nil, "Constructor"], blk].
-storeHistory(blklist, stored_state, block_depth + 1) :- storeHistory() 
+// Helpher function: check if something is (in)directly an argument
+.decl user_input(id: SSA)
+user_input(id) :- argument(id,_,_).
+user_input(id) :- assign(id, orig), user_input(orig).
+
+// Transitively close constants
+const(id, value) :- assign(id, orig), const(orig, value).
+// Transitively close load
+load(id, field) :-  assign(id, orig), load(orig, field).
+// Either const or msg.sender (the safe values in a require)
+.decl cnst_or_sender(stmt: SSA)
+cnst_or_sender(stmt) :- const(stmt, _); msgSender(stmt).
+
+// we consider a (later guard) condition to be safe if it does not depend on user provided arguments. However, we keep
+// track of which state variables it depends on.
+.decl safe_condition(stmt: SSA, state_variables: unsigned)
+// condition is const op const
+safe_condition(stmt, 0) :- bop(stmt, lhs, rhs,_), cnst_or_sender(lhs), cnst_or_sender(rhs).
+// load op const
+safe_condition(stmt, tvec) :- bop(stmt, lhs, rhs,_), load(lhs, field), cnst_or_sender(rhs), activate_taint(tvec, field).
+// const op load
+safe_condition(stmt, tvec) :- bop(stmt, lhs, rhs,_), load(rhs, field), cnst_or_sender(lhs), activate_taint(tvec, field).
+// load op load
+safe_condition(stmt, tvec1 bor tvec2) :- bop(stmt, lhs, rhs,_), load(rhs,field1), 
+  											load(lhs,field2), activate_taint(tvec1, field1), activate_taint(tvec2, field2).
+
+// cond op cond
+safe_condition(stmt, tvec1 bor tvec2) :- bop(stmt, lhs, rhs,_), safe_condition(rhs,tvec1), 
+  											safe_condition(lhs, tvec2).
+
+// cond op const
+// const op cond
+safe_condition(stmt, tvec) :- bop(stmt, lhs, rhs,_),(
+  												(
+                                                  safe_condition(rhs, tvec), 
+                                                  cnst_or_sender(lhs)
+                                                ); 
+                                                (
+                                                    safe_condition(lhs, tvec), 
+                                                    cnst_or_sender(rhs)
+                                                )
+                                            ).
+
+// cond op load
+// load op cond
+safe_condition(stmt, tvec1 bor tvec2) :- bop(stmt, lhs, rhs,_),(
+  												(
+                                                  safe_condition(rhs, tvec1), 
+                                                  load(lhs, field2), activate_taint(tvec2, field2)
+                                                ); 
+                                                (
+                                                  safe_condition(lhs, tvec1), 
+                                                  load(rhs, field2), activate_taint(tvec2, field2)
+                                                )
+                                            ).
+                                            
+// Same as safe_condition but we only care about those which produce a branching
+.decl safe_guard_condition(stmt: SSA, state_variables: unsigned)
+safe_guard_condition(stmt, state_variables) :- safe_condition(stmt, state_variables), branch(_,_, _,_,_, stmt).
+
+.decl safe_guarded_block(blk: Block, state_variables: unsigned)
+safe_guarded_block(blk, state_variables) :- safe_guard_condition(stmt, state_variables), blockStmt(blk,stmt).
+
+.decl unguarded_block(blk: Block, state_variables: unsigned)
+unguarded_block(blk, state_vars) :- block(blk), !safe_guarded_block(blk, state_vars).
+
+// Simulate program run
+// final_state is the state of all state variables at end of execution
+
+// ********************* PROGRAM LOGIC *********************
+/* After executing executed_blks, we now execute current_block. We now do a case-by-case study depending on 
+ * two factors: whether there is a guard after execution of executed_blks, and whether the current block contains a guard
+ *
+ * CASE 1 (Guard in executed_blks): regardless of what current_blk is, the execution is still guarded (of course, it
+ * is still possible that there is a execution flow which ends in current_blk and is unguarded. Relation program_run 
+ * merely expresses the state after a sequence of blocks, not the absolute state of a single block).
+If current_block is not guarded, it inherits the guarded 
+ * state from the end of exeuction of list_blks. If current_block is guarded, then program_run's state after execution 
+ * of [executed_blks, current_block] is guarded (i.e. guarded=1)
+*/
+
+/*program_run([executed_blks, current_block], next_state bor hot_taint_vector, guarded) :- 
+  						program_run(executed_blks, current_state),
+  						block_taints_state_variables(current_block, taint_vector), 
+  						activate_taint(hot_taint_vector, var_id)
+
 */
 
 
-
-//context(0, [nil, blk]) :- block(blk).
-//context(size+1, [hist, blk]) :- context(size, hist), block(blk), size < 2.
+tainted_sinks(id) :- selfdestruct(id, _).
 
 
-//initStorage([nil, [fiedlId, "cosnt"]]) :-  function(/..), field(fiedlId) 
-
-
-//initStorage([nil, [field, valType]]) :- constructor(..), field(fieldId)
-//initStorage(newLIst) :- initStorage(field), field = [nil, [field, valType]], newList = [, []]
-
-
-// context(size, hist) :- context(size-1, hist), size < 3.
-
-
-// 
-.decl isMsgSender(id: SSA)
-isMsgSender(id) :-  builtinVariable(id, "SENDER").
-isMsgSender(id) :-  assign(id, orig), isMsgSender(orig).
-
-// not tainted if it is a statement derived from another statement, which is itself untainted
-taintedSSA(id) :- assign(id, orig), taintedSSA(orig).
-taintedSSA(id) :- load(id, field), taintedStorage(field). 
-taintedSSA(id) :- assign(id, orig), match("A.*", orig).
-// not tainted if statement is the value of a state variable 
-
-// tainted storage if it is assigned anything (over approximating for now. TODO: fix this to not over approx)
-taintedStorage(field) :- store(_, field, id_from), taintedSSA(id_from).
-taintedStorage(field) :- store(_, field, id_from), (match("A.*", id_from); taintedSSA(id_from)).
-
-
-// id is the id of the SSA of the condition on which the branch bifurcates
-guardSSA(id) :- branch(_, _, _, _, _, id), bop(id, id_lhs, id_rhs, _), 
-                ( 
-                    (isMsgSender(id_lhs), !taintedSSA(id_rhs));
-                    (isMsgSender(id_rhs), !taintedSSA(id_lhs))
-                ).
-
-hasGuardSSA(block) :- guardSSA(id), blockStmt(block, id).
-
-.decl unguardedTaintedSSA(id: SSA)
-.decl unguardedTaintedStorage(field: Name)
-
-unguardedTaintedSSA(id) :- taintedSSA(id), blockStmt(block, id), !hasGuardSSA(block).
-unguardedTaintedStorage(field) :- taintedStorage(field), store(id, field, _), blockStmt(block, id), !hasGuardSSA(block). 
-
-
-
-tainted_sinks(id) :- selfdestruct(id, address).
-
+.output deactivate_taint
 .output tainted_sinks
-.output blockDominates
+
+/*.output blockDominates
 .output blockFollows
 .output blockFollowsTransitive
 .output notDominates
@@ -265,3 +228,4 @@ tainted_sinks(id) :- selfdestruct(id, address).
 .output taintedStorage
 .output context
 .output fields
+*/
