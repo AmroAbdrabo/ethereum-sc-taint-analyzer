@@ -1,7 +1,7 @@
 # PASS 2022 Course Project
 
 ## Project Idea
-![alt text](state_diag.PNG?raw=true)
+![alt text](./project/state_diag.PNG?raw=true)
 
 ## Repository Structure
 * The `peck` directory contains a parser that transforms a Solidity contract into an intermediate representation (IR), and derives Datalog facts that encode the contract’s IR. You must not edit any files in this folder..
