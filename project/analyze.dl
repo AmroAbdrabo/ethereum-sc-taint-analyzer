@@ -122,6 +122,9 @@ block_taints_complete(blk, tainted_fields, cnt) :- block(blk),
   												   block_taints_state_variables(blk, tainted_fields, cnt),
   												  !block_taints_not_complete(blk, tainted_fields, cnt).
 
+.decl block_taints_noth(blk: Block)
+block_taints_noth(blk) :- block(blk), !block_taints_complete(blk, _, _).
+
 // Helpher function: check if something is (in)directly an argument
 .decl user_input(id: SSA)
 user_input(id) :- argument(id,_,_).
@@ -185,8 +188,8 @@ safe_guard_condition(stmt, state_variables) :- safe_condition(stmt, state_variab
 .decl safe_guarded_block(blk: Block, state_variables: unsigned)
 safe_guarded_block(blk, state_variables) :- safe_guard_condition(stmt, state_variables), blockStmt(blk,stmt).
 
-.decl unguarded_block(blk: Block, state_variables: unsigned)
-unguarded_block(blk, state_vars) :- block(blk), !safe_guarded_block(blk, state_vars).
+.decl unguarded_block(blk: Block)
+unguarded_block(blk) :- block(blk), !safe_guarded_block(blk, _).
 
 // Simulate program run
 // final_state is the state of all state variables at end of execution
