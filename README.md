@@ -1,5 +1,8 @@
 # PASS 2022 Course Project
 
+## Project Idea
+![alt text](https://gitlab.inf.ethz.ch/course-pass-2022/team-17/-/blob/Bitwise-state-tracking/project/state_diag.PNG)
+
 ## Repository Structure
 * The `peck` directory contains a parser that transforms a Solidity contract into an intermediate representation (IR), and derives Datalog facts that encode the contract’s IR. You must not edit any files in this folder..
 * The `project` directory contains the code template for your project. Technical details on the IR and its representation in Datalog can be found in `project/README-IR.md`. The `project/test_contracts` directory contains example test contracts with annotated ground truth in comments. The `project/analyze.dl` and `project/analyze.py` are the main source files for the analysis.
