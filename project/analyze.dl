@@ -108,16 +108,18 @@ deactivate_taint((bnot tainted) band 7, field) :- activate_taint(tainted, field)
 // blk is the block, tainted_fields are the fields which are assigned user input inside 
 // blk, and cnt is the number of tainted variables taken into account by the relation
 // TODO (done): a block taints a state variable if it does not store a constant in it (instead of specifying the unsafe, specify the safe -- principle of whitelisting)
+// TODO: While this approach whitelisting approach works for simple cases, it does not work in harder cases where the value of one state var is stored in another state var
 .decl block_taints_state_variables(blk: Block, tainted_fields: number, cnt : number)
 block_taints_state_variables(blk, tainted_fields, 1) :- store(stmt, field, assigned),
   blockStmt(blk, stmt), activate_taint(tainted_fields, field), 
-  (!const(assigned, _); (load(assigned, field), activate_taint(tvec, field), block_taints_state_variables(blk,tvec,_))).
+  !const(assigned, _).
+  //(!const(assigned, _); (load(assigned, field), activate_taint(tvec, field), block_taints_state_variables(blk,tvec,_))).
 
 // Combine taints for a block
 block_taints_state_variables(blk, tainted_fields_first bor tainted_fields_second, cnt1 + cnt2) :- 
   block_taints_state_variables(blk, tainted_fields_first, cnt1),
   block_taints_state_variables(blk, tainted_fields_second, cnt2),
-  cnt1+ cnt2 < numfields, field_cnt(numfields). // Again, 3 and 7 should be generated/written by python
+  cnt1+ cnt2 < numfields, field_cnt(numfields). // Again, 3 and 7 should be generated/written by python (done already in dl)
 
 // Unfortunately, at this point we still have a lot of relations for block_taints_state_variable 
 // of the form (blk, 110, 2) and (blk, 100, 1) but we only care about the one maximum cnt so we say (souffle 
@@ -224,7 +226,8 @@ blockFollows(id_block_from, id_block_to) :- jump(_,id_block_from, id_block_to,_)
 program_run([nil, constructor_block], 0, 0) :- function(constructor_block, "Constructor").
 
 // From the constructor, every start of a function follows
-blockFollows("Constructor", fct_blk) :- function(fct_blk,x), x!="Constructor".
+//blockFollows("Constructor", fct_blk) :- function(fct_blk,x), x!="Constructor".
+blockFollows(conblk, fct_blk) :- function(fct_blk,x), function(conblk, "Constructor"), x!="Constructor".
 
 .decl terminating_ret(blk: Block)
 terminating_ret(blk) :- (return(_, blk); revert(_,blk)), !jump(_, _, blk, _).
