@@ -81,21 +81,25 @@ load(id, field) :-  assign(id, orig), load(orig, field).
 // (assuming there are 3 state variables) 100 for the first variables
 // 000 means all state variables are untainted, 100 means only first 
 // field, V00, is tainted
-.decl activate_taint(state: unsigned, field: Name)
+.decl activate_taint(state: number, field: Name)
 
-// These inputs are generated/written by Python
-activate_taint(1, "V00").
-activate_taint(2, "V01").
-activate_taint(4, "V02").
+// These inputs are generated/written by Python (found a way to do them in dl)
+activate_taint(s, field) :- s = 1 bshl k, k = to_number(substr(field, 1, strlen(field))), store(_, field, _).
+//activate_taint(1, "V00").
+//activate_taint(2, "V01").
+//activate_taint(4, "V02").
 
-.decl deactivate_taint(state: unsigned, field: Name) 
+.decl field_cnt(cnt:number)
+field_cnt(cnt) :- cnt = count:{activate_taint(_,_)}.
+
+.decl deactivate_taint(state: number, field: Name) 
 // Unfortunately we only need 3 bits but datalog gives us 32 hence the need for 
 // 0b111 mask (i.e. 7)
 deactivate_taint((bnot tainted) band 7, field) :- activate_taint(tainted, field).
 // NB: 7 will be generated/written by python 
 
 .type BlkList = [next: BlkList, blk: Block]
-.decl program_run(executed_blks: BlkList, final_state: unsigned, guarded: unsigned) // final state after executing blklist
+.decl program_run(executed_blks: BlkList, final_state: number, guarded: number) // final state after executing blklist
 
 // Now we make a relation block_taints_state_variable which contains
 // records of the form B02, 101 meaning that inside B02 there is a store of user input
@@ -104,24 +108,24 @@ deactivate_taint((bnot tainted) band 7, field) :- activate_taint(tainted, field)
 // blk is the block, tainted_fields are the fields which are assigned user input inside 
 // blk, and cnt is the number of tainted variables taken into account by the relation
 // TODO (done): a block taints a state variable if it does not store a constant in it (instead of specifying the unsafe, specify the safe -- principle of whitelisting)
-.decl block_taints_state_variables(blk: Block, tainted_fields: unsigned, cnt : unsigned)
+.decl block_taints_state_variables(blk: Block, tainted_fields: number, cnt : number)
 block_taints_state_variables(blk, tainted_fields, 1) :- store(stmt, field, assigned),
   blockStmt(blk, stmt), activate_taint(tainted_fields, field), 
   (!const(assigned, _); (load(assigned, field), activate_taint(tvec, field), block_taints_state_variables(blk,tvec,_))).
 
 // Combine taints for a block
-block_taints_state_variables(blk, (tainted_fields_first bor tainted_fields_second) band 7, cnt1 + cnt2) :- 
+block_taints_state_variables(blk, tainted_fields_first bor tainted_fields_second, cnt1 + cnt2) :- 
   block_taints_state_variables(blk, tainted_fields_first, cnt1),
   block_taints_state_variables(blk, tainted_fields_second, cnt2),
-  cnt1+ cnt2 < 3. // Again, 3 and 7 should be generated/written by python
+  cnt1+ cnt2 < numfields, field_cnt(numfields). // Again, 3 and 7 should be generated/written by python
 
 // Unfortunately, at this point we still have a lot of relations for block_taints_state_variable 
 // of the form (blk, 110, 2) and (blk, 100, 1) but we only care about the one maximum cnt so we say (souffle 
 // does not allow witnesses for maximum so we have to create a new relation)
-.decl block_taints_not_complete(blk: Block, tainted_fields: unsigned, cnt: unsigned)
+.decl block_taints_not_complete(blk: Block, tainted_fields: number, cnt: number)
 block_taints_not_complete(blk, tainted_fields, cnt) :- block_taints_state_variables(blk, tainted_fields, cnt),
   		block_taints_state_variables(blk, tainted_fields2, cnt2), cnt2 > cnt.
-.decl block_taints_complete(blk: Block, tainted_fields: unsigned, cnt: unsigned)
+.decl block_taints_complete(blk: Block, tainted_fields: number, cnt: number)
 
 // A block taints (completely) if there is no example where it is a minimum (in terms of cnt).
 block_taints_complete(blk, tainted_fields, cnt) :- block(blk), 
@@ -142,7 +146,7 @@ cnst_or_sender(stmt) :- const(stmt, _); msgSender(stmt).
 
 // we consider a (later guard) condition to be safe if it does not depend on user provided arguments. However, we keep
 // track of which state variables it depends on.
-.decl safe_condition(stmt: SSA, state_variables: unsigned)
+.decl safe_condition(stmt: SSA, state_variables: number)
 // condition is const op const
 safe_condition(stmt, 0) :- bop(stmt, lhs, rhs,_), cnst_or_sender(lhs), cnst_or_sender(rhs).
 // load op const
@@ -184,11 +188,11 @@ safe_condition(stmt, tvec1 bor tvec2) :- bop(stmt, lhs, rhs,_),(
                                             ).
 // TODO: take into account argument transfers (see example 8)                                   
 // Same as safe_condition but we only care about those which produce a branching
-.decl safe_guard_condition(stmt: SSA, state_variables: unsigned)
+.decl safe_guard_condition(stmt: SSA, state_variables: number)
 safe_guard_condition(stmt, state_variables) :- safe_condition(stmt, state_variables), branch(_,_, _,_,_, stmt).
 
 // TODO: take into account argument transfers (see example 8)  
-.decl safe_guarded_block(blk: Block, state_variables: unsigned)
+.decl safe_guarded_block(blk: Block, state_variables: number)
 safe_guarded_block(blk, state_variables) :- safe_guard_condition(stmt, state_variables), blockStmt(blk,stmt).
 
 .decl unguarded_block(blk: Block)
@@ -205,7 +209,7 @@ unguarded_block(blk) :- block(blk), !safe_guarded_block(blk, _).
  * is still possible that there is a execution flow which ends in current_blk and is unguarded. (Relation program_run 
  * merely expresses the state after a sequence of blocks, not the absolute state of a single block).
 */
-.decl program_run(executed_blks: BlkList, final_state: unsigned, guarded: unsigned) // final state after executing blklist
+.decl program_run(executed_blks: BlkList, final_state: number, guarded: number) // final state after executing blklist
 
 // Now make sure every other function block (apart from constructor) follows from constructor
 .decl blockFollows(id_block_from: Block, id_block_to: Block)
