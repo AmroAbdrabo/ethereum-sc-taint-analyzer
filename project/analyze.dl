@@ -72,6 +72,11 @@
 msgSender(id) :-  builtinVariable(id, "SENDER").
 msgSender(id) :-  assign(id, orig), msgSender(orig).
 
+// Transitively close constants
+const(id, value) :- assign(id, orig), const(orig, value).
+// Transitively close load
+load(id, field) :-  assign(id, orig), load(orig, field).
+
 // Encode each state variable as a one-hot vector
 // (assuming there are 3 state variables) 100 for the first variables
 // 000 means all state variables are untainted, 100 means only first 
@@ -98,10 +103,11 @@ deactivate_taint((bnot tainted) band 7, field) :- activate_taint(tainted, field)
 
 // blk is the block, tainted_fields are the fields which are assigned user input inside 
 // blk, and cnt is the number of tainted variables taken into account by the relation
+// TODO (done): a block taints a state variable if it does not store a constant in it (instead of specifying the unsafe, specify the safe -- principle of whitelisting)
 .decl block_taints_state_variables(blk: Block, tainted_fields: unsigned, cnt : unsigned)
 block_taints_state_variables(blk, tainted_fields, 1) :- store(stmt, field, assigned),
   blockStmt(blk, stmt), activate_taint(tainted_fields, field), 
-  (argument(assigned, _, _); msgSender(assigned)).
+  (!const(assigned, _); (load(assigned, field), activate_taint(tvec, field), block_taints_state_variables(blk,tvec,_))).
 
 // Combine taints for a block
 block_taints_state_variables(blk, (tainted_fields_first bor tainted_fields_second) band 7, cnt1 + cnt2) :- 
@@ -130,10 +136,6 @@ block_taints_noth(blk) :- block(blk), !block_taints_complete(blk, _, _).
 user_input(id) :- argument(id,_,_).
 user_input(id) :- assign(id, orig), user_input(orig).
 
-// Transitively close constants
-const(id, value) :- assign(id, orig), const(orig, value).
-// Transitively close load
-load(id, field) :-  assign(id, orig), load(orig, field).
 // Either const or msg.sender (the safe values in a require)
 .decl cnst_or_sender(stmt: SSA)
 cnst_or_sender(stmt) :- const(stmt, _); msgSender(stmt).
@@ -185,6 +187,7 @@ safe_condition(stmt, tvec1 bor tvec2) :- bop(stmt, lhs, rhs,_),(
 .decl safe_guard_condition(stmt: SSA, state_variables: unsigned)
 safe_guard_condition(stmt, state_variables) :- safe_condition(stmt, state_variables), branch(_,_, _,_,_, stmt).
 
+// TODO: take into account argument transfers (see example 8)  
 .decl safe_guarded_block(blk: Block, state_variables: unsigned)
 safe_guarded_block(blk, state_variables) :- safe_guard_condition(stmt, state_variables), blockStmt(blk,stmt).
 
@@ -219,6 +222,9 @@ program_run([nil, constructor_block], 0, 0) :- function(constructor_block, "Cons
 // From the constructor, every start of a function follows
 blockFollows("Constructor", fct_blk) :- function(fct_blk,x), x!="Constructor".
 
+.decl terminating_ret(blk: Block)
+terminating_ret(blk) :- return(_, blk), !jump(_, _, blk, _).
+
 // If the flow so far is unguarded and the next (current) block is unguarded or has a guard which
 // depends on tainted state variables then the next state is unguarded. If the current block taints 
 // some state variables then we maintain these taints in the next state. Otherwise, we leave the taints as they are.
@@ -228,11 +234,30 @@ program_run([executed_blks, current_blk], tainted_fields bor curr_tainted, 0) :-
   			(
   				(!block_taints_complete(current_blk, _, _), curr_tainted = 0);
   				block_taints_complete(current_blk, curr_tainted, _)
-			)
+			  )
 			,(
               	unguarded_block(current_blk);
                (safe_guarded_block(blk, sv), sv band (tainted_fields bor curr_tainted) != 0)
-             ).
+        ).
+
+// Guarded flow remains guarded until it terminates
+program_run([executed_blks, current_blk], tainted_fields, 1) :- 
+  program_run(executed_blks, tainted_fields, 1), block(prev_blk), blockFollows(prev_blk, current_blk), 
+  			executed_blks = [finished_blks, prev_blk], !terminating_ret(current_blk).
+ 
+// Here, the guarded flow terminates
+program_run([executed_blks, current_blk], tainted_fields, 2) :- 
+  program_run(executed_blks, tainted_fields, 1), block(prev_blk), blockFollows(prev_blk, current_blk), 
+  			executed_blks = [finished_blks, prev_blk], terminating_ret(current_blk).
+  			
+// Guarded flow from an unguarded flow if there is a guard
+program_run([executed_blks, current_blk], tainted_fields, 1) :- 
+  program_run(executed_blks, tainted_fields, 0), block(prev_blk), blockFollows(prev_blk, current_blk), 
+  			executed_blks = [finished_blks, prev_blk], 
+  			(
+  				(!block_taints_complete(current_blk, _, _), curr_tainted = 0);
+  				block_taints_complete(current_blk, curr_tainted, _)
+			  ), safe_guarded_block(blk, sv), sv band (tainted_fields bor curr_tainted) = 0.
 
 
 
