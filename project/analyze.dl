@@ -180,7 +180,7 @@ safe_condition(stmt, tvec1 bor tvec2) :- bop(stmt, lhs, rhs,_),(
                                                   load(rhs, field2), activate_taint(tvec2, field2)
                                                 )
                                             ).
-                                            
+// TODO: take into account argument transfers (see example 8)                                   
 // Same as safe_condition but we only care about those which produce a branching
 .decl safe_guard_condition(stmt: SSA, state_variables: unsigned)
 safe_guard_condition(stmt, state_variables) :- safe_condition(stmt, state_variables), branch(_,_, _,_,_, stmt).
