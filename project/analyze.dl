@@ -199,19 +199,41 @@ unguarded_block(blk) :- block(blk), !safe_guarded_block(blk, _).
  * two factors: whether there is a guard after execution of executed_blks, and whether the current block contains a guard
  *
  * CASE 1 (Guard in executed_blks): regardless of what current_blk is, the execution is still guarded (of course, it
- * is still possible that there is a execution flow which ends in current_blk and is unguarded. Relation program_run 
+ * is still possible that there is a execution flow which ends in current_blk and is unguarded. (Relation program_run 
  * merely expresses the state after a sequence of blocks, not the absolute state of a single block).
-If current_block is not guarded, it inherits the guarded 
- * state from the end of exeuction of list_blks. If current_block is guarded, then program_run's state after execution 
- * of [executed_blks, current_block] is guarded (i.e. guarded=1)
 */
+.decl program_run(executed_blks: BlkList, final_state: unsigned, guarded: unsigned) // final state after executing blklist
 
-/*program_run([executed_blks, current_block], next_state bor hot_taint_vector, guarded) :- 
-  						program_run(executed_blks, current_state),
-  						block_taints_state_variables(current_block, taint_vector), 
-  						activate_taint(hot_taint_vector, var_id)
+// Now make sure every other function block (apart from constructor) follows from constructor
+.decl blockFollows(id_block_from: Block, id_block_to: Block)
+// There is a follows relation b/w blocks in case of 1: goto 2: branch 3: jump 
+blockFollows(id_block_from, id_block_to) :- goto(_, id_block_from, id_block_to).
+blockFollows(id_block_from, id_block_to) :-  branch(_, _, id_block_from, id_block_to, _, _); 
+                                             branch(_, _, id_block_from, _, id_block_to, _).
+blockFollows(id_block_from, id_block_to) :- jump(_,id_block_from, id_block_to,_); 
+                                            jump(_,_,id_block_from, id_block_to). 
 
-*/
+// base case
+program_run([nil, constructor_block], 0, 0) :- function(constructor_block, "Constructor").
+
+// From the constructor, every start of a function follows
+blockFollows("Constructor", fct_blk) :- function(fct_blk,x), x!="Constructor".
+
+// If the flow so far is unguarded and the next (current) block is unguarded or has a guard which
+// depends on tainted state variables then the next state is unguarded. If the current block taints 
+// some state variables then we maintain these taints in the next state. Otherwise, we leave the taints as they are.
+program_run([executed_blks, current_blk], tainted_fields bor curr_tainted, 0) :- 
+  program_run(executed_blks, tainted_fields, 0), block(prev_blk), blockFollows(prev_blk, current_blk), 
+  			executed_blks = [finished_blks, prev_blk],
+  			(
+  				(!block_taints_complete(current_blk, _, _), curr_tainted = 0);
+  				block_taints_complete(current_blk, curr_tainted, _)
+			)
+			,(
+              	unguarded_block(current_blk);
+               (safe_guarded_block(blk, sv), sv band (tainted_fields bor curr_tainted) != 0)
+             ).
+
 
 
 tainted_sinks(id) :- selfdestruct(id, _).

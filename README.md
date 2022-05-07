@@ -1,6 +1,7 @@
 # PASS 2022 Course Project
 
 ## Project Idea
+#### NB: State diagram uses three state variables but can be generalized to any number of state variables
 ![alt text](./project/state_diag.PNG?raw=true)
 
 ## Repository Structure
