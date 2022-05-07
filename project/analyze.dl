@@ -223,7 +223,7 @@ program_run([nil, constructor_block], 0, 0) :- function(constructor_block, "Cons
 blockFollows("Constructor", fct_blk) :- function(fct_blk,x), x!="Constructor".
 
 .decl terminating_ret(blk: Block)
-terminating_ret(blk) :- return(_, blk), !jump(_, _, blk, _).
+terminating_ret(blk) :- (return(_, blk); revert(_,blk)), !jump(_, _, blk, _).
 
 // If the flow so far is unguarded and the next (current) block is unguarded or has a guard which
 // depends on tainted state variables then the next state is unguarded. If the current block taints 
