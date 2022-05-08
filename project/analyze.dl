@@ -84,7 +84,7 @@ load(id, field) :-  assign(id, orig), load(orig, field).
 .decl activate_taint(state: number, field: Name)
 
 // These inputs are generated/written by Python (found a way to do them in dl)
-activate_taint(s, field) :- s = 1 bshl k, k = to_number(substr(field, 1, strlen(field))), store(_, field, _).
+activate_taint(s, field) :- s = 2^k, k = to_number(substr(field, 1, strlen(field))), store(_, field, _).
 //activate_taint(1, "V00").
 //activate_taint(2, "V01").
 //activate_taint(4, "V02").
@@ -211,7 +211,7 @@ unguarded_block(blk) :- block(blk), !safe_guarded_block(blk, _).
  * is still possible that there is a execution flow which ends in current_blk and is unguarded. (Relation program_run 
  * merely expresses the state after a sequence of blocks, not the absolute state of a single block).
 */
-.decl program_run(executed_blks: BlkList, final_state: number, guarded: number, hist_size: number) // final state after executing blklist
+.decl program_run(executed_blks: BlkList, final_state: number, guarded: number, hist_size: number, string_hist: symbol) // final state after executing blklist
 
 // Now make sure every other function block (apart from constructor) follows from constructor
 .decl blockFollows(id_block_from: Block, id_block_to: Block)
@@ -222,8 +222,11 @@ blockFollows(id_block_from, id_block_to) :-  branch(_, _, id_block_from, id_bloc
 blockFollows(id_block_from, id_block_to) :- jump(_,id_block_from, id_block_to,_); 
                                             jump(_,_,id_block_from, id_block_to). 
 
+.decl ranp(x: symbol)
+ranp(x) :- function(x, _).
+.output ranp // Doesn't show anything
 // base case
-program_run([nil, constructor_block], 0, 0, 1) :- function(constructor_block, "Constructor").
+program_run([nil, constructor_block], 0, 0, 1, constructor_block) :- function(constructor_block, "Constructor").
 
 // From the constructor, every start of a function follows
 //blockFollows("Constructor", fct_blk) :- function(fct_blk,x), x!="Constructor".
@@ -236,8 +239,8 @@ blockFollows(termblk, fctblk) :- terminating_ret(termblk), function(fctblk, fctn
 // If the flow so far is unguarded and the next (current) block is unguarded or has a guard which
 // depends on tainted state variables then the next state is unguarded. If the current block taints 
 // some state variables then we maintain these taints in the next state. Otherwise, we leave the taints as they are.
-program_run([executed_blks, current_blk], tainted_fields bor curr_tainted, 0, hs+1)  :- 
-  program_run(executed_blks, tainted_fields, 0, hs), hs < 9, block(prev_blk), blockFollows(prev_blk, current_blk), 
+program_run([executed_blks, current_blk], tainted_fields bor curr_tainted, 0, hs+1, currhist)  :- 
+  program_run(executed_blks, tainted_fields, 0, hs, hist), currhist = cat(hist, current_blk), hs < 9, block(prev_blk), blockFollows(prev_blk, current_blk), 
   			executed_blks = [finished_blks, prev_blk],
   			(
   				(!block_taints_complete(current_blk, _, _), curr_tainted = 0);
@@ -249,18 +252,18 @@ program_run([executed_blks, current_blk], tainted_fields bor curr_tainted, 0, hs
         ).
 
 // Guarded flow remains guarded until it terminates
-program_run([executed_blks, current_blk], tainted_fields, 1, hs+1) :- 
-  program_run(executed_blks, tainted_fields, 1, hs), hs < 9, block(prev_blk), blockFollows(prev_blk, current_blk), 
+program_run([executed_blks, current_blk], tainted_fields, 1, hs+1, currhist) :- 
+  program_run(executed_blks, tainted_fields, 1, hs, hist), currhist = cat(hist, current_blk), hs < 9, block(prev_blk), blockFollows(prev_blk, current_blk), 
   			executed_blks = [finished_blks, prev_blk], !terminating_ret(current_blk).
  
 // Here, the guarded flow terminates
-program_run([executed_blks, current_blk], tainted_fields, 2, hs+1) :- 
-  program_run(executed_blks, tainted_fields, 1, hs), hs < 9, block(prev_blk), blockFollows(prev_blk, current_blk), 
+program_run([executed_blks, current_blk], tainted_fields, 2, hs+1, currhist) :- 
+  program_run(executed_blks, tainted_fields, 1, hs, hist), currhist = cat(hist, current_blk), hs < 9, block(prev_blk), blockFollows(prev_blk, current_blk), 
   			executed_blks = [finished_blks, prev_blk], terminating_ret(current_blk).
   			
 // Guarded flow from an unguarded flow if there is a guard
-program_run([executed_blks, current_blk], tainted_fields, 1, hs+1) :- 
-  program_run(executed_blks, tainted_fields, 0, hs), hs < 9, block(prev_blk), blockFollows(prev_blk, current_blk), 
+program_run([executed_blks, current_blk], tainted_fields, 1, hs+1, currhist) :- 
+  program_run(executed_blks, tainted_fields, 0, hs, hist), currhist = cat(hist, current_blk), hs < 9, block(prev_blk), blockFollows(prev_blk, current_blk), 
   			executed_blks = [finished_blks, prev_blk], 
   			(
   				(!block_taints_complete(current_blk, _, _), curr_tainted = 0);
@@ -268,11 +271,17 @@ program_run([executed_blks, current_blk], tainted_fields, 1, hs+1) :-
 			  ), safe_guarded_block(blk, sv), sv band (tainted_fields bor curr_tainted) = 0.
 
 
+.decl Y(a:symbol, b:symbol)
+.decl Z(a:symbol, b:symbol, c:symbol)
+.output Z
+Y("a","b").
+Y("c","d").
+Z(a,b, cat(cat(a,b), a)) :- Y(a,b).
 
 
 tainted_sinks(stmt) :-
   			selfdestruct(stmt, addr), blockStmt(current_blk, stmt),
-  			program_run(executed_blks, tainted_fields, 0, _), block(prev_blk), blockFollows(prev_blk, current_blk), 
+  			program_run(executed_blks, tainted_fields, 0, _, _), block(prev_blk), blockFollows(prev_blk, current_blk), 
   			executed_blks = [finished_blks, prev_blk], 
   			(
   				(!block_taints_complete(current_blk, _, _), curr_tainted = 0);
@@ -287,7 +296,7 @@ tainted_sinks(stmt) :-
 
 //tainted_sinks(id) :- selfdestruct(id, _).
 
-
+.output program_run
 .output deactivate_taint
 .output tainted_sinks
 
