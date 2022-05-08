@@ -72,7 +72,7 @@
 msgSender(id) :-  builtinVariable(id, "SENDER").
 msgSender(id) :-  assign(id, orig), msgSender(orig).
 
-// Transitively close constants
+// Transitively close constants. TODO: include as const if it is a bop or uop on constants 
 const(id, value) :- assign(id, orig), const(orig, value).
 // Transitively close load
 load(id, field) :-  assign(id, orig), load(orig, field).
@@ -268,7 +268,23 @@ program_run([executed_blks, current_blk], tainted_fields, 1) :-
 
 
 
-tainted_sinks(id) :- selfdestruct(id, _).
+
+tainted_sinks(stmt) :-
+  			selfdestruct(stmt, addr), blockStmt(current_blk, stmt),
+  			program_run(executed_blks, tainted_fields, 0), block(prev_blk), blockFollows(prev_blk, current_blk), 
+  			executed_blks = [finished_blks, prev_blk], 
+  			(
+  				(!block_taints_complete(current_blk, _, _), curr_tainted = 0);
+  				block_taints_complete(current_blk, curr_tainted, _)
+			  )
+		    ,(msgSender(addr); // addr of self destruct is msgsender, a tainted field, or is a bop which depends on user input (e.g. A01)
+            	(
+              		activate_taint(s, field), load(addr, field), s band (curr_tainted bor tainted_fields) != 0
+				      );          
+                (bop(stmt, _, _, _), !safe_condition(addr, _))
+         ).
+
+//tainted_sinks(id) :- selfdestruct(id, _).
 
 
 .output deactivate_taint
