@@ -64,6 +64,31 @@
 .decl revert(id_transfer: Transfer, id_block: Block)
 .decl builtinVariable(id: SSA, name: symbol)
 
+#ifdef ENABLE_INPUT_FROM_FILES
+.input function
+.input block
+.input blockStmt
+.input follows
+.input argument
+.input statement
+.input assign
+.input const
+.input uop
+.input bop
+.input load
+.input structLoad
+.input store
+.input structStore
+.input goto
+.input branch
+.input return
+.input jump
+.input transferArgument
+.input selfdestruct
+.input revert
+.input builtinVariable
+
+
 // -- output relations --
 .decl tainted_sinks(id: SSA)
 
@@ -222,9 +247,6 @@ blockFollows(id_block_from, id_block_to) :-  branch(_, _, id_block_from, id_bloc
 blockFollows(id_block_from, id_block_to) :- jump(_,id_block_from, id_block_to,_); 
                                             jump(_,_,id_block_from, id_block_to). 
 
-.decl ranp(x: symbol)
-ranp(x) :- function(x, _).
-.output ranp // Doesn't show anything
 // base case
 program_run([nil, constructor_block], 0, 0, 1, constructor_block) :- function(constructor_block, "Constructor").
 
