@@ -102,6 +102,19 @@ const(id, value) :- assign(id, orig), const(orig, value).
 // Transitively close load
 load(id, field) :-  assign(id, orig), load(orig, field).
 
+// Helpher function: check if something is (in)directly an argument
+.decl user_input(id: SSA)
+user_input(id) :- argument(id,_,_).
+user_input(id) :- assign(id, orig), user_input(orig).
+
+// Check if something depends on user input or user address (tainted)
+.decl depon_user_info(id: SSA)
+depon_user_info(id) :- user_input(id); msgSender(id).
+depon_user_info(id) :- bop(id, id_lhs, id_rhs, _), (depon_user_info(id_lhs); depon_user_info(id_rhs)).
+depon_user_info(id) :- uop(id, id_orig,_), depon_user_info(id_orig).
+// Check if something depends on user input
+.output depon_user_info
+
 // Encode each state variable as a one-hot vector
 // (assuming there are 3 state variables) 100 for the first variables
 // 000 means all state variables are untainted, 100 means only first 
@@ -137,7 +150,7 @@ deactivate_taint((bnot tainted) band 7, field) :- activate_taint(tainted, field)
 .decl block_taints_state_variables(blk: Block, tainted_fields: number, cnt : number)
 block_taints_state_variables(blk, tainted_fields, 1) :- store(stmt, field, assigned),
   blockStmt(blk, stmt), activate_taint(tainted_fields, field), 
-  !const(assigned, _).
+  depon_user_info(assigned). //!const(assigned, _).
   //(!const(assigned, _); (load(assigned, field), activate_taint(tvec, field), block_taints_state_variables(blk,tvec,_))).
 
 // Combine taints for a block
@@ -161,11 +174,6 @@ block_taints_complete(blk, tainted_fields, cnt) :- block(blk),
 
 .decl block_taints_noth(blk: Block)
 block_taints_noth(blk) :- block(blk), !block_taints_complete(blk, _, _).
-
-// Helpher function: check if something is (in)directly an argument
-.decl user_input(id: SSA)
-user_input(id) :- argument(id,_,_).
-user_input(id) :- assign(id, orig), user_input(orig).
 
 // Either const or msg.sender (the safe values in a require)
 .decl cnst_or_sender(stmt: SSA)
@@ -300,10 +308,11 @@ Y("a","b").
 Y("c","d").
 Z(a,b, cat(cat(a,b), a)) :- Y(a,b).
 
+.decl debugInfo(executed_blks: BlkList, tfields: number, currhist: symbol)
 
-tainted_sinks(stmt) :-
+tainted_sinks(stmt), debugInfo(executed_blks, tainted_fields, currhist):-
   			selfdestruct(stmt, addr), blockStmt(current_blk, stmt),
-  			program_run(executed_blks, tainted_fields, 0, _, _), block(prev_blk), blockFollows(prev_blk, current_blk), 
+  			program_run(executed_blks, tainted_fields, 0, _, currhist), block(prev_blk), blockFollows(prev_blk, current_blk), 
   			executed_blks = [finished_blks, prev_blk], 
   			(
   				(!block_taints_complete(current_blk, _, _), curr_tainted = 0);
@@ -321,7 +330,7 @@ tainted_sinks(stmt) :-
 .output program_run
 .output deactivate_taint
 .output tainted_sinks
-
+.output debugInfo
 /*.output blockDominates
 .output blockFollows
 .output blockFollowsTransitive
