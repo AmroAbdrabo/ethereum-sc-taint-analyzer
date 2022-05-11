@@ -247,13 +247,77 @@ unguarded_block(blk) :- block(blk), !safe_guarded_block(blk, _).
 .decl program_run(executed_blks: BlkList, final_state: number, guarded: number, hist_size: number, string_hist: symbol) // final state after executing blklist
 
 // Now make sure every other function block (apart from constructor) follows from constructor
-.decl blockFollows(id_block_from: Block, id_block_to: Block)
+//.decl blockFollows(id_block_from: Block, id_block_to: Block)
 // There is a follows relation b/w blocks in case of 1: goto 2: branch 3: jump 
-blockFollows(id_block_from, id_block_to) :- goto(_, id_block_from, id_block_to).
-blockFollows(id_block_from, id_block_to) :-  branch(_, _, id_block_from, id_block_to, _, _); 
-                                             branch(_, _, id_block_from, _, id_block_to, _).
-blockFollows(id_block_from, id_block_to) :- jump(_,id_block_from, id_block_to,_); 
-                                            jump(_,_,id_block_from, id_block_to). 
+//blockFollows(id_block_from, id_block_to) :- goto(_, id_block_from, id_block_to).
+//blockFollows(id_block_from, id_block_to) :-  branch(_, _, id_block_from, id_block_to, _, _); 
+//                                             branch(_, _, id_block_from, _, id_block_to, _).
+//blockFollows(id_block_from, id_block_to) :- jump(_,id_block_from, id_block_to,_); 
+//                                            jump(_,_,id_block_from, id_block_to). 
+// ******************** NEW ******************** 
+// a long block is a block with more than one store
+.decl longBlock(longblk: Block)
+longBlock(blk) :- store(id1, _, _), blockStmt(blk, id1), store(id2, _, _), blockStmt(blk, id2), id1 != id2. 
+
+
+.decl store_block_follows(from_stmt: number, to_stmt: number, parent: Block)
+store_block_follows(from, to, parent) :- store_block(_, parent, from), store_block(_, parent, to), from < to.
+
+.decl not_follows_immediately(from: number, to: number, parent: Block)
+not_follows_immediately(from, to, parent) :- not_follows_immediately(from, mid, parent), 
+  not_follows_immediately(mid, to, parent), mid < to, mid > from.
+
+// connect all the individual store blocks together
+blockFollows(id_block_from, id_block_to) :- store_block(id_block_from, parent, sid_from),
+  store_block(id_block_to, parent, sid_to), !not_follows_immediately(sid_from, sid_to, parent).
+
+.decl not_first_store(sblk: Block, sid: number, parent: Block)
+not_first_store(sblk, sid, parent) :- store_block(sblk, parent, sid), store_block(sblk2, parent, sid2), sid2 < sid.
+
+.decl not_last_store(sblk: Block, sid: number, parent: Block)
+not_last_store(sblk, sid, parent) :- store_block(sblk, parent, sid), store_block(sblk2, parent, sid2), sid2 > sid.
+
+
+.decl store_block(store_block: Block, parent_block: Block, stmt_order: number)
+block(sblk), blockStmt(sblk, stmt), store_block(sblk, parent, order) :- 
+  store(stmt, _, _), blockStmt(parent, stmt), sblk = cat(parent, stmt), 
+  order = to_number(substr(stmt, 1, strlen(stmt))), longBlock(parent).   
+
+
+// Now make sure every other function block (apart from constructor) follows from constructor
+.decl blockFollows(id_block_from: Block, id_block_to: Block)
+
+// from the last store of a multistore block to the parent block (which we segmented into multiple stores)
+blockFollows(id_block_from, id_block_to) :- store_block(id_block_from, id_block_to, _), 
+  											!not_last_store(id_block_from, _, id_block_to).
+  											
+// There is a follows relation b/w blocks in case of 1: goto 2: branch 3: jump 
+blockFollows(id_block_from, id_block_to) :- goto(_, id_block_from, id_block_to), !longBlock(id_block_to).
+
+// If it is a multistore block, go to the first store block instead
+blockFollows(id_block_from, id_block_to) :- goto(_, id_block_from, parent), longBlock(parent), 
+  											!not_first_store(id_block_to, _, parent), store_block(id_block_to, _, _).
+// Branch without multistore blocks
+blockFollows(id_block_from, id_block_to) :-  (branch(_, _, id_block_from, id_block_to, _, _); 
+                                             branch(_, _, id_block_from, _, id_block_to, _)), !longBlock(id_block_to).
+
+// Branch with multistore blocks (same as before: go to the first store block)
+blockFollows(id_block_from, id_block_to) :-  (branch(_, _, id_block_from, parent, _, _); 
+                                             branch(_, _, id_block_from, _, parent, _)), 
+  											longBlock(parent), !not_first_store(id_block_to, _, parent), 
+                                              store_block(id_block_to, _, _).
+
+// Jump without multistore blocks
+blockFollows(id_block_from, id_block_to) :- (jump(_,id_block_from, id_block_to,_); 
+                                            jump(_,_,id_block_from, id_block_to)), !longBlock(id_block_to). 
+
+// Jump with multistore blocks
+blockFollows(id_block_from, id_block_to) :- (jump(_,id_block_from, parent,_); 
+                                            jump(_,_,id_block_from, parent)), longBlock(parent),
+  											!not_first_store(id_block_to, _, parent), 
+                                              store_block(id_block_to, _, _).
+
+// ******************** END NEW ********************
 
 // base case
 program_run([nil, constructor_block], 0, 0, 1, constructor_block) :- function(constructor_block, "Constructor").
