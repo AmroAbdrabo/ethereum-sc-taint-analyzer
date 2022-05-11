@@ -115,6 +115,12 @@ depon_user_info(id) :- uop(id, id_orig,_), depon_user_info(id_orig).
 // Check if something depends on user input
 .output depon_user_info
 
+// Check if something depends only on constants
+.decl depon_const_info(id: SSA)
+depon_const_info(id) :- const(id, _); (const(orig, _), assign(id, orig)).
+depon_const_info(id) :- bop(id, id_lhs, id_rhs, _), (depon_const_info(id_lhs); depon_const_info(id_rhs)).
+depon_const_info(id) :- uop(id, id_orig, _), depon_const_info(id_orig). 
+
 // Encode each state variable as a one-hot vector
 // (assuming there are 3 state variables) 100 for the first variables
 // 000 means all state variables are untainted, 100 means only first 
@@ -133,8 +139,7 @@ field_cnt(cnt) :- cnt = count:{activate_taint(_,_)}.
 .decl deactivate_taint(state: number, field: Name) 
 // Unfortunately we only need 3 bits but datalog gives us 32 hence the need for 
 // 0b111 mask (i.e. 7)
-deactivate_taint((bnot tainted) band 7, field) :- activate_taint(tainted, field).
-// NB: 7 will be generated/written by python 
+deactivate_taint(bnot tainted, field) :- activate_taint(tainted, field). 
 
 .type BlkList = [next: BlkList, blk: Block]
 //.decl program_run(executed_blks: BlkList, final_state: number, guarded: number) // final state after executing blklist
@@ -174,6 +179,32 @@ block_taints_complete(blk, tainted_fields, cnt) :- block(blk),
 
 .decl block_taints_noth(blk: Block)
 block_taints_noth(blk) :- block(blk), !block_taints_complete(blk, _, _).
+
+// *********************** BLOCK CLEANING STATE VARIABLES ****************************
+
+.decl block_removes_taint_sv(blk: Block, cleaned_fields: number, cnt: number)
+block_removes_taint_sv(blk, cleaned_fields, cnt) :- store(stmt, field, assigned),
+      blockStmt(blk, stmt), deactivate_taint(cleaned_fields, field), 
+      depon_const_info(assigned).
+
+// Combine taint deactivations for a block
+block_removes_taint_sv(blk, cleaned_fields_first band cleaned_fields_second, cnt1 + cnt2) :- 
+  block_removes_taint_sv(blk, cleaned_fields_first, cnt1),
+  block_removes_taint_sv(blk, cleaned_fields_second, cnt2),
+  cnt1+ cnt2 < numfields, field_cnt(numfields). 
+
+.decl block_cleans_not_complete(blk: Block, cleaned_fields: number, cnt: number)
+block_cleans_not_complete(blk, cleaned_fields, cnt) :- block_removes_taint_sv(blk, cleaned_fields, cnt),
+  		block_removes_taint_sv(blk, cleaned_fields2, cnt2), cnt2 > cnt.
+.decl block_removes_taint_complete(blk: Block, cleaned_fields: number, cnt: number)
+
+// A block taints (completely) if there is no example where it is a minimum (in terms of cnt).
+block_removes_taint_complete(blk, cleaned_fields, cnt) :- block(blk), 
+  												   block_removes_taint_sv(blk, cleaned_fields, cnt),
+  												  !block_cleans_not_complete(blk, cleaned_fields, cnt).
+
+
+// *********************** END BLOCK CLEANING STATE VARIABLES ****************************
 
 // Either const or msg.sender (the safe values in a require)
 .decl cnst_or_sender(stmt: SSA)
@@ -363,14 +394,6 @@ program_run([executed_blks, current_blk], tainted_fields, 1, hs+1, currhist) :-
   				(!block_taints_complete(current_blk, _, _), curr_tainted = 0);
   				block_taints_complete(current_blk, curr_tainted, _)
 			  ), safe_guarded_block(blk, sv), sv band (tainted_fields bor curr_tainted) = 0.
-
-
-.decl Y(a:symbol, b:symbol)
-.decl Z(a:symbol, b:symbol, c:symbol)
-.output Z
-Y("a","b").
-Y("c","d").
-Z(a,b, cat(cat(a,b), a)) :- Y(a,b).
 
 .decl debugInfo(executed_blks: BlkList, tfields: number, currhist: symbol)
 
