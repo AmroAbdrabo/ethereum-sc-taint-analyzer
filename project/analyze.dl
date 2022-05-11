@@ -183,7 +183,7 @@ block_taints_noth(blk) :- block(blk), !block_taints_complete(blk, _, _).
 // *********************** BLOCK CLEANING STATE VARIABLES ****************************
 
 .decl block_removes_taint_sv(blk: Block, cleaned_fields: number, cnt: number)
-block_removes_taint_sv(blk, cleaned_fields, cnt) :- store(stmt, field, assigned),
+block_removes_taint_sv(blk, cleaned_fields, 1) :- store(stmt, field, assigned),
       blockStmt(blk, stmt), deactivate_taint(cleaned_fields, field), 
       depon_const_info(assigned).
 
