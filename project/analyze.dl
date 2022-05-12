@@ -376,6 +376,19 @@ program_run([executed_blks, current_blk], tainted_fields bor curr_tainted, 0, hs
                (safe_guarded_block(blk, sv), sv band (tainted_fields bor curr_tainted) != 0)
         ).
 
+// If a program cleans a state variable
+program_run([executed_blks, current_blk], tainted_fields band curr_cleaned, 0, hs+1, currhist)  :- 
+  program_run(executed_blks, tainted_fields, 0, hs, hist), currhist = cat(hist, current_blk), hs < 9, block(prev_blk), blockFollows(prev_blk, current_blk), 
+  			executed_blks = [finished_blks, prev_blk],
+  			(
+  				(!block_removes_taint_complete(current_blk, _, _), curr_cleaned = 0);
+  				block_removes_taint_complete(current_blk, curr_cleaned, _)
+			  )
+			,(
+              	unguarded_block(current_blk);
+               (safe_guarded_block(blk, sv), sv band (tainted_fields band curr_cleaned) != 0)
+        ).
+
 // Guarded flow remains guarded until it terminates
 program_run([executed_blks, current_blk], tainted_fields, 1, hs+1, currhist) :- 
   program_run(executed_blks, tainted_fields, 1, hs, hist), currhist = cat(hist, current_blk), hs < 9, block(prev_blk), blockFollows(prev_blk, current_blk), 
