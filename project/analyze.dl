@@ -209,6 +209,7 @@ block_removes_taint_complete(blk, cleaned_fields, cnt) :- block(blk),
 // Either const or msg.sender (the safe values in a require)
 .decl cnst_or_sender(stmt: SSA)
 cnst_or_sender(stmt) :- const(stmt, _); msgSender(stmt).
+cnst_or_sender(stmt) :- uop(_, orig, _), cnst_or_sender(orig).
 
 // we consider a (later guard) condition to be safe if it does not depend on user provided arguments. However, we keep
 // track of which state variables it depends on.
