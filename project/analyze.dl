@@ -213,6 +213,8 @@ cnst_or_sender(stmt) :- const(stmt, _); msgSender(stmt).
 // we consider a (later guard) condition to be safe if it does not depend on user provided arguments. However, we keep
 // track of which state variables it depends on.
 .decl safe_condition(stmt: SSA, state_variables: number)
+// edge case such as just true
+safe_condition(stmt, 0) :- cnst_or_sender(stmt).
 // condition is const op const
 safe_condition(stmt, 0) :- bop(stmt, lhs, rhs,_), cnst_or_sender(lhs), cnst_or_sender(rhs).
 // load op const
