@@ -147,7 +147,7 @@ ssa_depens(id, args_lhs bor args_rhs, sv_lhs bor sv_rhs, sndr_lhs bor sndr_rhs, 
 
 // USE ONLY COMPLETE VERSION WITH MAX CNT
 .decl ssa_dep_incomplete(stmt: SSA, args: number, sv: number, sndr: number, cnt: number)
-ssa_dep_incomplete(id, args, sv, sndr, cnt) :- ssa_depens(id, _, _, _, cnt), ssa_depens(id, args, sv, sndr, cnt2), cnt2 > cnt.
+ssa_dep_incomplete(id, args, sv, sndr, cnt) :- ssa_depens(id, args, sv, sndr, cnt), ssa_depens(id, _, _, _, cnt2), cnt2 > cnt.
 
 .decl ssa_depens_complete(stmt: SSA, args: number, sv: number, sndr: number, cnt: number)
 ssa_depens_complete(id, args, sv, sndr, cnt) :- ssa_depens(id, args, sv, sndr, cnt), !ssa_dep_incomplete(id, args, sv, sndr, cnt).
@@ -245,47 +245,9 @@ cnst_or_sender(stmt) :- uop(stmt, orig, _), cnst_or_sender(orig).
 // we consider a (later guard) condition to be safe if it does not depend on user provided arguments. However, we keep
 // track of which state variables it depends on.
 .decl safe_condition(stmt: SSA, state_variables: number)
-// edge case such as just true
-safe_condition(stmt, 0) :- cnst_or_sender(stmt).
-// condition is const op const
-safe_condition(stmt, 0) :- bop(stmt, lhs, rhs,_), cnst_or_sender(lhs), cnst_or_sender(rhs).
-// load op const
-safe_condition(stmt, tvec) :- bop(stmt, lhs, rhs,_), load(lhs, field), cnst_or_sender(rhs), activate_taint(tvec, field).
-// const op load
-safe_condition(stmt, tvec) :- bop(stmt, lhs, rhs,_), load(rhs, field), cnst_or_sender(lhs), activate_taint(tvec, field).
-// load op load
-safe_condition(stmt, tvec1 bor tvec2) :- bop(stmt, lhs, rhs,_), load(rhs,field1), 
-  											load(lhs,field2), activate_taint(tvec1, field1), activate_taint(tvec2, field2).
+// (Potentially) safe condition with dependency on state variables
+safe_condition(stmt, sv) :- ssa_depens_complete(stmt, 0, sv, _, _). 
 
-// cond op cond
-safe_condition(stmt, tvec1 bor tvec2) :- bop(stmt, lhs, rhs,_), safe_condition(rhs,tvec1), 
-  											safe_condition(lhs, tvec2).
-
-// cond op const
-// const op cond
-safe_condition(stmt, tvec) :- bop(stmt, lhs, rhs,_),(
-  												(
-                                                  safe_condition(rhs, tvec), 
-                                                  cnst_or_sender(lhs)
-                                                ); 
-                                                (
-                                                    safe_condition(lhs, tvec), 
-                                                    cnst_or_sender(rhs)
-                                                )
-                                            ).
-
-// cond op load
-// load op cond
-safe_condition(stmt, tvec1 bor tvec2) :- bop(stmt, lhs, rhs,_),(
-  												(
-                                                  safe_condition(rhs, tvec1), 
-                                                  load(lhs, field2), activate_taint(tvec2, field2)
-                                                ); 
-                                                (
-                                                  safe_condition(lhs, tvec1), 
-                                                  load(rhs, field2), activate_taint(tvec2, field2)
-                                                )
-                                            ).
 // TODO: take into account argument transfers (see example 8)                                   
 // Same as safe_condition but we only care about those which produce a branching
 .decl safe_guard_condition(stmt: SSA, state_variables: number)
