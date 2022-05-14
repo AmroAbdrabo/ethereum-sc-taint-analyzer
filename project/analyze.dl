@@ -91,6 +91,7 @@
 
 // -- output relations --
 .decl tainted_sinks(id: SSA)
+tainted_sinks(id) :-selfdestruct(id, _).
 
 // Useful (wallah)
 .decl msgSender(id: SSA)
@@ -113,11 +114,11 @@ user_input(id, arg) :- assign(id, orig), user_input(orig, arg).
 user_input(id, arg) :- uop(id, orig, _), user_input(orig, arg).
 
 // Given that arguments are used only once we can treat similarly to fields. A01 -> 0010, A00 -> 0001, A02 
-.decl activate_arg_taint(state: number, id_arg: SSA)
-activate_arg_taint(s, id) :- s = 2^k, k = to_number(substr(id, 1, strlen(id))), argument(id, _, _).
+.decl arg_bv(state: number, id_arg: SSA)
+arg_bv(s, id) :- s = 2^k, k = to_number(substr(id, 1, strlen(id))), argument(id, _, _).
 
 .decl arg_cnt(cnt:number)
-arg_cnt(cnt) :- cnt = count:{activate_arg_taint(_,_)}.
+arg_cnt(cnt) :- cnt = count:{arg_bv(_,_)}.
 
 // Check if something depends only on constants
 .decl depon_const_info(id: SSA)
@@ -128,8 +129,8 @@ depon_const_info(id) :- uop(id, id_orig, _), depon_const_info(id_orig).
 .decl ssa_depens_complete(stmt: SSA, args: number, sv: number, sndr: number, cnt: number) // the things an SSA depends on
 // Base cases
 ssa_depens_complete(id, 0, 0, 0, 0) :- depon_const_info(id).
-ssa_depens_complete(id, s, 0, 0, 1) :- user_input(id, arg), activate_arg_taint(s, arg). // (id, s, 0 , 0, 1)  id_var = id 
-ssa_depens_complete(id, 0, s, 0, 1) :- load(id, field), activate_taint(s, field).
+ssa_depens_complete(id, s, 0, 0, 1) :- user_input(id, arg), arg_bv(s, arg). // (id, s, 0 , 0, 1)  id_var = id 
+ssa_depens_complete(id, 0, s, 0, 1) :- load(id, field), sv_bv(s, field).
 ssa_depens_complete(id, 0, 0, 1, 0) :- msgSender(id).
 
 .output ssa_depens_complete
@@ -142,16 +143,16 @@ ssa_depens_complete(id, args_lhs bor args_rhs, sv_lhs bor sv_rhs, sndr_lhs bor s
                   // and operation is to ensure no var is taken into account more than once
 
 /// ********************* Start: Store context in block *********************
-.decl activate_taint(state: number, field: Name)
+.decl sv_bv(state: number, field: Name)
 
 // For state variable taint activation
-activate_taint(s, field) :- s = 2^k, k = to_number(substr(field, 1, strlen(field))), store(_, field, _). // one-hot encoding
+sv_bv(s, field) :- s = 2^k, k = to_number(substr(field, 1, strlen(field))), store(_, field, _). // one-hot encoding
 
 .type BlkList = [next: BlkList, blk: Block]
 
 // Context of store in a block // B00, S02, 01011, 01101, 1
 .decl block_modifies_sv(blk: Block, sv: Name, state_dependency: number, arg_dependency: number, sndr: number)
-block_modifies_sv(blk, field, state_dep, arg_dep, sndr_dep) :- store(stmt, field, assigned),
+block_modifies_sv(blk, field, state_dep, arg_dep, sndr_dep) :- store(stmt, field, assigned), !longBlock(blk),
   blockStmt(blk, stmt), ssa_depens_complete(assigned, arg_dep, state_dep, sndr_dep, _). 
 
 /// ********************* END: Store context in block *********************
@@ -167,7 +168,7 @@ safe_condition(stmt, sv, arg) :- ssa_depens_complete(stmt, arg, sv, 1, _).
 safe_guarded_block(blk, state_dependency, arg_dependency) :- safe_condition(stmt, state_dependency, arg_dependency), branch(_,_, blk,_,_, stmt).// blockStmt(blk,stmt). block with safe guard condition need not have the var_cond defined inside the block (example: T0:: A02)
 
 .decl unguarded_block(blk: Block)
-unguarded_block(blk) :- block(blk), !safe_guarded_block(blk, _). // NB: a block can also be "unguarded" if some of its dependencies become tainted
+unguarded_block(blk) :- block(blk), !safe_guarded_block(blk, _, _). // NB: a block can also be "unguarded" if some of its dependencies become tainted
 
 // ***************** argument transfer *****************
 .decl arg_flow(arg: SSA, id_val: SSA, idx: number, block_from: Block, block_to: Block)
@@ -197,15 +198,19 @@ blockFollows(id_block_from, id_block_to) :- store_block(id_block_from, parent, s
   store_block(id_block_to, parent, sid_to), !not_follows_immediately(sid_from, sid_to, parent).
 
 .decl not_first_store(sblk: Block, sid: number, parent: Block)
-not_first_store(sblk, sid, parent) :- store_block(sblk, parent, sid), store_block(sblk2, parent, sid2), sid2 < sid.
+not_first_store(sblk, sid, parent) :- store_block(sblk, parent, sid), store_block(_, parent, sid2), sid2 < sid.
 
 .decl not_last_store(sblk: Block, sid: number, parent: Block)
-not_last_store(sblk, sid, parent) :- store_block(sblk, parent, sid), store_block(sblk2, parent, sid2), sid2 > sid.
+not_last_store(sblk, sid, parent) :- store_block(sblk, parent, sid), store_block(_, parent, sid2), sid2 > sid.
+
+
+
+
 
 
 .decl store_block(store_block: Block, parent_block: Block, stmt_order: number)
 block(sblk), blockStmt(sblk, stmt), store_block(sblk, parent, order) :- 
-  store(stmt, _, _), blockStmt(parent, stmt), sblk = cat(parent, stmt), 
+  store(stmt, _, _), blockStmt(parent, stmt), sblk = cat(parent, stmt),
   order = to_number(substr(stmt, 1, strlen(stmt))), longBlock(parent).   
 
 
@@ -240,33 +245,125 @@ arg_setup_blk(blk), block(blk) :- blk = cat(con_blk, f_blk), function(con_blk, "
 blockFollows(conblk, setup_blk), blockFollows(setup_blk, fblk) :-  arg_setup_blk(setup_blk), fblk = substr(setup_blk, 3, strlen(setup_blk)), function(conblk, "Constructor").
 .output blockFollows
 
-.decl terminating_ret(blk: Block)
-terminating_ret(blk) :- (return(_, blk); revert(_,blk)), !jump(_, _, blk, _).
-blockFollows(termblk, fctblk) :- terminating_ret(termblk), function(fctblk, fctname), fctname!="Constructor".
 
 // At the end of execution of executed_blks, sv_state determines the state variables which are tainted (have bit set to one),
 // arg_state determines the arguments which are tainted (have bit set to one), guarded determines whether it is guarded (by the end of execution of executed_blks)
 // string hist is B00B01
 .decl program_run(executed_blks: BlkList, sv_state: number, arg_state: number, guarded: number, hist_size: number, stack: BlkList, string_hist: symbol) // final state after executing blklist
 // base case
-program_run([nil, constructor_block], 0, 0, 0, 1, nil, constructor_block) :- function(constructor_block, "Constructor").
+program_run([nil, constructor_block], 0, 0, 0, 1, nil, "C") :- function(constructor_block, "Constructor").
+
+
+
+
+.decl hasArg(blk: Block)
+hasArg(blk) :- argument(_, blk, _).
+
+.decl doesModify(blk: Block)
+doesModify(blk) :- store(stmt, _, _), blockStmt(blk, stmt).
+
+.decl hasChildren(blk: Block)
+hasChildren(blk) :- blockFollows(blk, _); jump(_, blk, _, _).
 
 
 // If we are currently at the argument setup block (for user defined input) 
-program_run([executed_blks, toblk], sv_taint, args_tainted bor arg_taint, 0, hs+1, stack, currhist) :-  program_run(executed_blks, sv_taint, args_tainted, 0, hs, stack, prehist),
-                                                                              blockFollows(last_exec_blk, toblk), arg_setup_blk(toblk),
-                                                                              argument(id, substr(toblk, 3, strlen(toblk)), _), activate_arg_taint(arg_taint, id),
-                                                                              executed_blks = [ancient_list, last_exec_blk], currhist = cat(prehist, toblk). 
-// If we are currently at a store block then setup a taint (or untaint)
-program_run([executed_blks, toblk], sv_taint, args_tainted bor arg_taint, 0, hs+1, stack, currhist) :- program_run(executed_blks, sv_taint, args_tainted, 0, hs, stack, prehist),
-                                                                              blockFollows(cu)
+program_run([executed_blks, to_blk], sv_taint, args_tainted bor arg_taint, 0, hs+1, stack, currhist) :-  
+        program_run(executed_blks, sv_taint, args_tainted, 0, hs, stack, prehist),
+        blockFollows(last_exec_blk, to_blk), arg_setup_blk(to_blk),
+        (
+            (argument(id, substr(to_blk, 3, strlen(to_blk)), _), arg_bv(arg_taint, id));
+            (arg_taint = 0, !hasArg(substr(to_blk, 3, strlen(to_blk))))
+        ),
+        executed_blks = [ancient_list, last_exec_blk], currhist = cat(prehist, cat("->",substr(to_blk, 3, strlen(to_blk)))). 
+
+// Handle argument taint transfer (ungarded)
+program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, 0, hs, stack, prehist) :- 
+        program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist),
+        executed_blks = [prev_exec, last_blk], blockFollows(last_blk, to_blk),
+        arg_flow(arg, id_val, idx, last_blk, to_blk),
+        ssa_depens_complete(id_val, args_val, sv_val, sndr_val, cnt_val),
+
+        arg_taint_dep = args_val band args_tainted,
+        sv_taint_dep = sv_val band sv_tainted,
+        is_id_val_taint = (arg_taint_dep bor sv_taint_dep) bor sndr_val,
+        (
+            (is_id_val_taint != 0, arg_bv(bv, arg), new_arg_taint=bv);
+            (is_id_val_taint = 0, new_arg_taint = 0) 
+        ),
+        hs < 4.
+
+
+// Handle state variable taint transfer (ungarded)
+program_run([executed_blks, to_blk], sv_tainted bor new_sv_taint, args_tainted, 0, hs+1, stack, cat(prehist, to_blk)) :- 
+        program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist),
+        executed_blks = [prev_exec, last_blk], blockFollows(last_blk, to_blk), !arg_setup_blk(to_blk),
+        (
+            (
+                block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),        
+                    arg_taint_dep = arg_dep band args_tainted,
+                    sv_taint_dep = state_dep band sv_tainted,
+                    is_sv_val_taint = (arg_taint_dep bor sv_taint_dep) bor sndr_dep,
+                    (
+                        (is_sv_val_taint != 0, sv_bv(bv, field), new_sv_taint = bv);
+                        (is_sv_val_taint = 0, new_sv_taint = 0)
+
+                    )
+            );
+            (
+                !doesModify(to_blk), new_sv_taint = 0
+            )
+
+        ),
+        hs < 4.
+
+// Handle jump arguments and stack (ungarded)
+program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, 0, hs, new_stack, prehist) :- 
+        program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist),
+        executed_blks = [prev_exec, last_blk], jump(_, last_blk, to_blk, cont_blk),
+        
+        (
+            (((stack = [rest, top], top !=cont_blk);stack = nil), new_stack = [stack, cont_blk] );
+            ((stack = [rest, top], top=cont_blk), new_stack = stack )
+        ),
+
+        ssa_depens_complete(id_val, args_val, sv_val, sndr_val, cnt_val),
+
+        arg_taint_dep = args_val band args_tainted,
+        sv_taint_dep = sv_val band sv_tainted,
+        is_id_val_taint = (arg_taint_dep bor sv_taint_dep) bor sndr_val,
+        (
+            (is_id_val_taint != 0, arg_bv(bv, arg), new_arg_taint=bv);
+            (is_id_val_taint = 0, new_arg_taint = 0) 
+        ).
+
+
+// Actually jump
+// program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, 0, hs, new_stack, prehist) :- 
+//         program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist),
+
+
+
+// return to user control
+program_run([executed_blks, to_blk], sv_tainted, args_tainted bor arg_taint, 0, hs+1, stack, currhist) :- 
+    program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist), 
+    executed_blks = [prev_exec, last_blk], ((return(_, last_blk), stack = nil); revert(_, last_blk)),
+    arg_setup_blk(to_blk),
+    (
+        (argument(id, substr(to_blk, 3, strlen(to_blk)), _), arg_bv(arg_taint, id));
+        (arg_taint = 0, !hasArg(substr(to_blk, 3, strlen(to_blk))))
+    ),
+    currhist = cat(prehist, cat("->",substr(to_blk, 3, strlen(to_blk)))),
+    hs < 4. 
+
+
 
 
 
 .output program_run
-.output deactivate_taint
 .output tainted_sinks
-.output debugInfo
+.output blockFollows
+.output arg_setup_blk
+.output hasChildren
 /*.output blockDominates
 .output blockFollows
 .output blockFollowsTransitive
