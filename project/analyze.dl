@@ -100,17 +100,19 @@ msgSender(id) :-  uop(id, orig, _), msgSender(orig).
 
 // Transitively close constants. TODO: include as const if it is a bop or uop on constants 
 const(id, value) :- assign(id, orig), const(orig, value).
+const(id, value) :- uop(id, orig, _), const(orig, value).
+
 // Transitively close load
 load(id, field) :-  assign(id, orig), load(orig, field).
 load(id, field) :-  uop(id, orig, _), load(orig, field).
 
-// Helpher function: check if something depends on an argument
+// Helper function: check if something depends on an argument
 .decl user_input(id: SSA, depends_on_arg: SSA)
 user_input(id, id) :- argument(id,_,_).
 user_input(id, arg) :- assign(id, orig), user_input(orig, arg).
 user_input(id, arg) :- uop(id, orig, _), user_input(orig, arg).
 
-// Given that arguments are used only once we can treat similarly to fields
+// Given that arguments are used only once we can treat similarly to fields. A01 -> 0010, A00 -> 0001, A02 
 .decl activate_arg_taint(state: number, id_arg: SSA)
 activate_arg_taint(s, id) :- s = 2^k, k = to_number(substr(id, 1, strlen(id))), argument(id, _, _).
 
@@ -119,49 +121,32 @@ arg_cnt(cnt) :- cnt = count:{activate_arg_taint(_,_)}.
 
 // Check if something depends only on constants
 .decl depon_const_info(id: SSA)
-depon_const_info(id) :- const(id, _); (const(orig, _), assign(id, orig)).
-depon_const_info(id) :- bop(id, id_lhs, id_rhs, _), (depon_const_info(id_lhs); depon_const_info(id_rhs)).
-depon_const_info(id) :- uop(id, id_orig, _), depon_const_info(id_orig). 
+depon_const_info(id) :- const(id, _); (assign(id, orig), depon_const_info(orig)).
+depon_const_info(id) :- bop(id, id_lhs, id_rhs, _), depon_const_info(id_lhs), depon_const_info(id_rhs).
+depon_const_info(id) :- uop(id, id_orig, _), depon_const_info(id_orig).  
 
-.decl ssa_depens(stmt: SSA, args: number, sv: number, sndr: number, cnt: number) // the things an SSA depends on
+.decl ssa_depens_complete(stmt: SSA, args: number, sv: number, sndr: number, cnt: number) // the things an SSA depends on
 // Base cases
-ssa_depens(id, 0, 0, 0, 0) :- depon_const_info(id).
-ssa_depens(id, s, 0, 0, 1) :- user_input(id, arg), activate_arg_taint(s, arg).
-ssa_depens(id, 0, s, 0, 1) :- load(id, field), activate_taint(s, field).
-ssa_depens(id, 0, 0, 1, 0) :- msgSender(id).
+ssa_depens_complete(id, 0, 0, 0, 0) :- depon_const_info(id).
+ssa_depens_complete(id, s, 0, 0, 1) :- user_input(id, arg), activate_arg_taint(s, arg). // (id, s, 0 , 0, 1)  id_var = id 
+ssa_depens_complete(id, 0, s, 0, 1) :- load(id, field), activate_taint(s, field).
+ssa_depens_complete(id, 0, 0, 1, 0) :- msgSender(id).
+
+.output ssa_depens_complete
 
 // Tree recursion
-ssa_depens(id, args, sv, sndr, cnt)  :- (assign(id, orig); uop(id, orig, _)), ssa_depens(orig, args, sv, sndr, cnt).
-ssa_depens(id, args_lhs bor args_rhs, sv_lhs bor sv_rhs, sndr_lhs bor sndr_rhs, cnt_lhs + cnt_rhs)  :- bop(id, id_lhs, id_rhs, _), 
-                  ssa_depens(id_lhs, args_lhs, sv_lhs, sndr_lhs, cnt_lhs),  
-                  ssa_depens(id_rhs, args_rhs, sv_rhs, sndr_rhs, cnt_rhs). 
+ssa_depens_complete(id, args, sv, sndr, cnt)  :- (assign(id, orig); uop(id, orig, _)), ssa_depens_complete(orig, args, sv, sndr, cnt).
+ssa_depens_complete(id, args_lhs bor args_rhs, sv_lhs bor sv_rhs, sndr_lhs bor sndr_rhs, cnt_lhs + cnt_rhs)  :- bop(id, id_lhs, id_rhs, _), 
+                  ssa_depens_complete(id_lhs, args_lhs, sv_lhs, sndr_lhs, cnt_lhs),  
+                  ssa_depens_complete(id_rhs, args_rhs, sv_rhs, sndr_rhs, cnt_rhs). 
                   // and operation is to ensure no var is taken into account more than once
 
-// USE ONLY COMPLETE VERSION WITH MAX CNT
-.decl ssa_dep_incomplete(stmt: SSA, args: number, sv: number, sndr: number, cnt: number)
-ssa_dep_incomplete(id, args, sv, sndr, cnt) :- ssa_depens(id, args, sv, sndr, cnt), ssa_depens(id, args2, sv2, sndr2, cnt2), 
-                                                tot_edges2 = args2 + sv2 + sndr2, tot_edges = args + sv + sndr, tot_edges2 > tot_edges.
-
-.decl ssa_depens_complete(stmt: SSA, args: number, sv: number, sndr: number, cnt: number)
-ssa_depens_complete(id, args, sv, sndr, cnt) :- ssa_depens(id, args, sv, sndr, cnt), !ssa_dep_incomplete(id, args, sv, sndr, cnt).
-
-
-// Encode each state variable as a one-hot vector. (Assuming there are 3 state variables) 000 means all state variables are untainted, 001 means only first field, V00, is tainted
 .decl activate_taint(state: number, field: Name)
 
-// These inputs are generated/written by Python (found a way to do them in dl)
+// For state variable taint activation
 activate_taint(s, field) :- s = 2^k, k = to_number(substr(field, 1, strlen(field))), store(_, field, _). // one-hot encoding
 
-.decl field_cnt(cnt:number)
-field_cnt(cnt) :- cnt = count:{activate_taint(_,_)}.
-
-.decl deactivate_taint(state: number, field: Name) 
-// Unfortunately we only need 3 bits but datalog gives us 32 hence the need for 
-// 0b111 mask (i.e. 7)
-deactivate_taint(bnot tainted, field) :- activate_taint(tainted, field). 
-
 .type BlkList = [next: BlkList, blk: Block]
-
 
 // taints or cleans, depending on whether state_dependency and arg_dependency references tainted values
 .decl block_taints_sv(blk: Block, sv: Name, state_dependency: number, arg_dependency: number, sndr: number)
@@ -349,7 +334,7 @@ tainted_sinks(stmt), debugInfo(executed_blks, tainted_fields, currhist):-
                 (bop(stmt, _, _, _), !safe_condition(addr, _))
          ).
 
-//tainted_sinks(id) :- selfdestruct(id, _).
+tainted_sinks(id) :- selfdestruct(id, _).
 
 .output program_run
 .output deactivate_taint
