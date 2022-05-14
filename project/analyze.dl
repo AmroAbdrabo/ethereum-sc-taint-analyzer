@@ -117,15 +117,6 @@ activate_arg_taint(s, id) :- s = 2^k, k = to_number(substr(id, 1, strlen(id))), 
 .decl arg_cnt(cnt:number)
 arg_cnt(cnt) :- cnt = count:{activate_arg_taint(_,_)}.
 
-// Check if something depends on user input or user address (tainted)
-//.decl depon_user_info(id: SSA, sndr: number, argument: number), sv: number)
-//depon_user_info(id) :- user_input(id, arg). 
-//depon_user_info(id, 1) :- msgSender(id).
-//depon_user_info(id) :- bop(id, id_lhs, id_rhs, _), (depon_user_info(id_lhs); depon_user_info(id_rhs)).
-//depon_user_info(id) :- uop(id, id_orig,_), depon_user_info(id_orig).
-// Check if something depends on user input
-//.output depon_user_info
-
 // Check if something depends only on constants
 .decl depon_const_info(id: SSA)
 depon_const_info(id) :- const(id, _); (const(orig, _), assign(id, orig)).
@@ -137,32 +128,29 @@ depon_const_info(id) :- uop(id, id_orig, _), depon_const_info(id_orig).
 ssa_depens(id, 0, 0, 0, 0) :- depon_const_info(id).
 ssa_depens(id, s, 0, 0, 1) :- user_input(id, arg), activate_arg_taint(s, arg).
 ssa_depens(id, 0, s, 0, 1) :- load(id, field), activate_taint(s, field).
-ssa_depens(id, 0, 0, 1, 1) :- msgSender(id).
+ssa_depens(id, 0, 0, 1, 0) :- msgSender(id).
 
 // Tree recursion
-ssa_depens(id, args, sv, sndr, cnt)  :- uop(id, orig, _), ssa_depens(orig, args, sv, sndr, cnt).
+ssa_depens(id, args, sv, sndr, cnt)  :- (assign(id, orig); uop(id, orig, _)), ssa_depens(orig, args, sv, sndr, cnt).
 ssa_depens(id, args_lhs bor args_rhs, sv_lhs bor sv_rhs, sndr_lhs bor sndr_rhs, cnt_lhs + cnt_rhs)  :- bop(id, id_lhs, id_rhs, _), 
                   ssa_depens(id_lhs, args_lhs, sv_lhs, sndr_lhs, cnt_lhs),  
-                  ssa_depens(id_rhs, args_rhs, sv_rhs, sndr_rhs, cnt_rhs).
+                  ssa_depens(id_rhs, args_rhs, sv_rhs, sndr_rhs, cnt_rhs). 
+                  // and operation is to ensure no var is taken into account more than once
 
 // USE ONLY COMPLETE VERSION WITH MAX CNT
 .decl ssa_dep_incomplete(stmt: SSA, args: number, sv: number, sndr: number, cnt: number)
-ssa_dep_incomplete(id, args, sv, sndr, cnt) :- ssa_depens(id, args, sv, sndr, cnt), ssa_depens(id, _, _, _, cnt2), cnt2 > cnt.
+ssa_dep_incomplete(id, args, sv, sndr, cnt) :- ssa_depens(id, args, sv, sndr, cnt), ssa_depens(id, args2, sv2, sndr2, cnt2), 
+                                                tot_edges2 = args2 + sv2 + sndr2, tot_edges = args + sv + sndr, tot_edges2 > tot_edges.
 
 .decl ssa_depens_complete(stmt: SSA, args: number, sv: number, sndr: number, cnt: number)
 ssa_depens_complete(id, args, sv, sndr, cnt) :- ssa_depens(id, args, sv, sndr, cnt), !ssa_dep_incomplete(id, args, sv, sndr, cnt).
 
 
-// Encode each state variable as a one-hot vector
-// (assuming there are 3 state variables) 100 for the first variables
-// 000 means all state variables are untainted, 100 means only first 
-// field, V00, is tainted
+// Encode each state variable as a one-hot vector. (Assuming there are 3 state variables) 000 means all state variables are untainted, 001 means only first field, V00, is tainted
 .decl activate_taint(state: number, field: Name)
 
 // These inputs are generated/written by Python (found a way to do them in dl)
-activate_taint(s, field) :- s = 2^k, k = to_number(substr(field, 1, strlen(field))), store(_, field, _).
-//activate_taint(1, "V00").
-//activate_taint(2, "V01").
+activate_taint(s, field) :- s = 2^k, k = to_number(substr(field, 1, strlen(field))), store(_, field, _). // one-hot encoding
 
 .decl field_cnt(cnt:number)
 field_cnt(cnt) :- cnt = count:{activate_taint(_,_)}.
@@ -173,118 +161,42 @@ field_cnt(cnt) :- cnt = count:{activate_taint(_,_)}.
 deactivate_taint(bnot tainted, field) :- activate_taint(tainted, field). 
 
 .type BlkList = [next: BlkList, blk: Block]
-//.decl program_run(executed_blks: BlkList, final_state: number, guarded: number) // final state after executing blklist
 
-// Now we make a relation block_taints_state_variable which contains
-// records of the form B02, 101 meaning that inside B02 there is a store of user input
-// (including msg.sender) to V00 and V02
 
-// blk is the block, tainted_fields are the fields which are assigned user input inside 
-// blk, and cnt is the number of tainted variables taken into account by the relation
-// TODO (done): a block taints a state variable if it does not store a constant in it (instead of specifying the unsafe, specify the safe -- principle of whitelisting)
-// TODO: While this approach whitelisting approach works for simple cases, it does not work in harder cases where the value of one state var is stored in another state var
-.decl block_taints_state_variables(blk: Block, tainted_fields: number, cnt : number)
-block_taints_state_variables(blk, tainted_fields, 1) :- store(stmt, field, assigned),
-  blockStmt(blk, stmt), activate_taint(tainted_fields, field), 
-  ssa_depens_complete(assigned, args, _, sndr, _), (args != 0; sndr != 0). //!const(assigned, _).
-  //(!const(assigned, _); (load(assigned, field), activate_taint(tvec, field), block_taints_state_variables(blk,tvec,_))).
-
-// Combine taints for a block
-block_taints_state_variables(blk, tainted_fields_first bor tainted_fields_second, cnt1 + cnt2) :- 
-  block_taints_state_variables(blk, tainted_fields_first, cnt1),
-  block_taints_state_variables(blk, tainted_fields_second, cnt2),
-  cnt1+ cnt2 < numfields, field_cnt(numfields). // Again, 3 and 7 should be generated/written by python (done already in dl)
-
-// Unfortunately, at this point we still have a lot of relations for block_taints_state_variable 
-// of the form (blk, 110, 2) and (blk, 100, 1) but we only care about the one maximum cnt so we say (souffle 
-// does not allow witnesses for maximum so we have to create a new relation)
-.decl block_taints_not_complete(blk: Block, tainted_fields: number, cnt: number)
-block_taints_not_complete(blk, tainted_fields, cnt) :- block_taints_state_variables(blk, tainted_fields, cnt),
-  		block_taints_state_variables(blk, tainted_fields2, cnt2), cnt2 > cnt.
-.decl block_taints_complete(blk: Block, tainted_fields: number, cnt: number)
-
-// A block taints (completely) if there is no example where it is a minimum (in terms of cnt).
-block_taints_complete(blk, tainted_fields, cnt) :- block(blk), 
-  												   block_taints_state_variables(blk, tainted_fields, cnt),
-  												  !block_taints_not_complete(blk, tainted_fields, cnt).
-
-.decl block_taints_noth(blk: Block)
-block_taints_noth(blk) :- block(blk), !block_taints_complete(blk, _, _).
-
-// *********************** BLOCK CLEANING STATE VARIABLES ****************************
-
-.decl block_removes_taint_sv(blk: Block, cleaned_fields: number, cnt: number)
-block_removes_taint_sv(blk, cleaned_fields, 1) :- store(stmt, field, assigned),
-      blockStmt(blk, stmt), deactivate_taint(cleaned_fields, field), 
-      depon_const_info(assigned).
-
-// Combine taint deactivations for a block
-block_removes_taint_sv(blk, cleaned_fields_first band cleaned_fields_second, cnt1 + cnt2) :- 
-  block_removes_taint_sv(blk, cleaned_fields_first, cnt1),
-  block_removes_taint_sv(blk, cleaned_fields_second, cnt2),
-  cnt1+ cnt2 < numfields, field_cnt(numfields). 
-
-.decl block_cleans_not_complete(blk: Block, cleaned_fields: number, cnt: number)
-block_cleans_not_complete(blk, cleaned_fields, cnt) :- block_removes_taint_sv(blk, cleaned_fields, cnt),
-  		block_removes_taint_sv(blk, cleaned_fields2, cnt2), cnt2 > cnt.
-.decl block_removes_taint_complete(blk: Block, cleaned_fields: number, cnt: number)
-
-// A block taints (completely) if there is no example where it is a minimum (in terms of cnt).
-block_removes_taint_complete(blk, cleaned_fields, cnt) :- block(blk), 
-  												   block_removes_taint_sv(blk, cleaned_fields, cnt),
-  												  !block_cleans_not_complete(blk, cleaned_fields, cnt).
-
+// taints or cleans, depending on whether state_dependency and arg_dependency references tainted values
+.decl block_taints_sv(blk: Block, sv: Name, state_dependency: number, arg_dependency: number, sndr: number)
+block_taints_sv(blk, field, state_dep, arg_dep, sndr_dep) :- store(stmt, field, assigned),
+  blockStmt(blk, stmt), ssa_depens_complete(assigned, arg_dep, state_dep, sndr_dep, _). 
 
 // *********************** END BLOCK CLEANING STATE VARIABLES ****************************
 
-// Either const or msg.sender (the safe values in a require)
-.decl cnst_or_sender(stmt: SSA)
-cnst_or_sender(stmt) :- const(stmt, _); msgSender(stmt).
-cnst_or_sender(stmt) :- uop(stmt, orig, _), cnst_or_sender(orig).
-
-// we consider a (later guard) condition to be safe if it does not depend on user provided arguments. However, we keep
+// We consider a (later guard) condition to be safe if it does not depend on user provided arguments. However, we keep
 // track of which state variables it depends on.
-.decl safe_condition(stmt: SSA, state_variables: number)
+.decl safe_condition(stmt: SSA, state_dependency: number, arg_dependency: number)  
 // (Potentially) safe condition with dependency on state variables
-safe_condition(stmt, sv) :- ssa_depens_complete(stmt, 0, sv, _, _). 
-
-// TODO: take into account argument transfers (see example 8)                                   
-// Same as safe_condition but we only care about those which produce a branching
-.decl safe_guard_condition(stmt: SSA, state_variables: number)
-safe_guard_condition(stmt, state_variables) :- safe_condition(stmt, state_variables), branch(_,_, _,_,_, stmt).
+safe_condition(stmt, sv, arg) :- ssa_depens_complete(stmt, arg, sv, 1, _). 
 
 // TODO: take into account argument transfers (see example 8)  
-.decl safe_guarded_block(blk: Block, state_variables: number)
-safe_guarded_block(blk, state_variables) :- safe_guard_condition(stmt, state_variables), blockStmt(blk,stmt).
+.decl safe_guarded_block(blk: Block, state_dependency: number, arg_dependency: number)
+safe_guarded_block(blk, state_dependency, arg_dependency) :- safe_condition(stmt, state_dependency, arg_dependency), branch(_,_, blk,_,_, stmt).// blockStmt(blk,stmt). block with safe guard condition need not have the var_cond defined inside the block (example: T0:: A02)
 
 .decl unguarded_block(blk: Block)
-unguarded_block(blk) :- block(blk), !safe_guarded_block(blk, _).
+unguarded_block(blk) :- block(blk), !safe_guarded_block(blk, _). // NB: a block can also be "unguarded" if some of its dependencies become tainted
 
-// Simulate program run
-// final_state is the state of all state variables at end of execution
+// ***************** information transfer *****************
+.decl arg_flow(arg: SSA, id_val: SSA, idx: number, block_from: Block, block_to: Block)
+arg_flow(arg, id_val, idx, block_from, block_to) :- transferArgument(transfer, id_val, idx), 
+                                                    (
+                                                      goto(transfer, block_from, block_to);
+                                                      jump(transfer, block_from, block_to, _);
+                                                      (jump(transfer_orig, _, block_from, block_to), return(transfer, block_from)) // when the called function is done
+                                                      // does not seem to be case that a branch transfers any arguments (tho I might be wrong)
+                                                    ), argument(arg, block_to, idx).
 
-// ********************* PROGRAM LOGIC *********************
-/* After executing executed_blks, we now execute current_block. We now do a case-by-case study depending on 
- * two factors: whether there is a guard after execution of executed_blks, and whether the current block contains a guard
- *
- * CASE 1 (Guard in executed_blks): regardless of what current_blk is, the execution is still guarded (of course, it
- * is still possible that there is a execution flow which ends in current_blk and is unguarded. (Relation program_run 
- * merely expresses the state after a sequence of blocks, not the absolute state of a single block).
-*/
-.decl program_run(executed_blks: BlkList, final_state: number, guarded: number, hist_size: number, string_hist: symbol) // final state after executing blklist
 
-// Now make sure every other function block (apart from constructor) follows from constructor
-//.decl blockFollows(id_block_from: Block, id_block_to: Block)
-// There is a follows relation b/w blocks in case of 1: goto 2: branch 3: jump 
-//blockFollows(id_block_from, id_block_to) :- goto(_, id_block_from, id_block_to).
-//blockFollows(id_block_from, id_block_to) :-  branch(_, _, id_block_from, id_block_to, _, _); 
-//                                             branch(_, _, id_block_from, _, id_block_to, _).
-//blockFollows(id_block_from, id_block_to) :- jump(_,id_block_from, id_block_to,_); 
-//                                            jump(_,_,id_block_from, id_block_to). 
-// ******************** NEW ******************** 
-// a long block is a block with more than one store
+// ***************** end: information transfer *****************
 .decl longBlock(longblk: Block)
-longBlock(blk) :- store(id1, _, _), blockStmt(blk, id1), store(id2, _, _), blockStmt(blk, id2), id1 != id2. 
+longBlock(blk) :- store(id1, _, _), blockStmt(blk, id1), store(id2, _, _), blockStmt(blk, id2), id1 != id2, !function(blk,"Constructor"). 
 
 
 .decl store_block_follows(from_stmt: number, to_stmt: number, parent: Block)
@@ -314,7 +226,7 @@ block(sblk), blockStmt(sblk, stmt), store_block(sblk, parent, order) :-
 // Now make sure every other function block (apart from constructor) follows from constructor
 .decl blockFollows(id_block_from: Block, id_block_to: Block)
 
-// from the last store of a multistore block to the parent block (which we segmented into multiple stores)
+// from the last store of a parent block to the parent block itself (which we segmented into multiple stores)
 blockFollows(id_block_from, id_block_to) :- store_block(id_block_from, id_block_to, _), 
   											!not_last_store(id_block_from, _, id_block_to).
   											
@@ -334,34 +246,50 @@ blockFollows(id_block_from, id_block_to) :-  (branch(_, _, id_block_from, parent
   											longBlock(parent), !not_first_store(id_block_to, _, parent), 
                                               store_block(id_block_to, _, _).
 
-// Jump without multistore blocks
-blockFollows(id_block_from, id_block_to) :- (jump(_,id_block_from, id_block_to,_); 
-                                            jump(_,_,id_block_from, id_block_to)), !longBlock(id_block_to). 
-
-// Jump with multistore blocks
-blockFollows(id_block_from, id_block_to) :- (jump(_,id_block_from, parent,_); 
-                                            jump(_,_,id_block_from, parent)), longBlock(parent),
-  											!not_first_store(id_block_to, _, parent), 
-                                              store_block(id_block_to, _, _).
-
-// ******************** END NEW ********************
-
-// base case
-program_run([nil, constructor_block], 0, 0, 1, constructor_block) :- function(constructor_block, "Constructor").
 
 // From the constructor, every start of a function follows
-//blockFollows("Constructor", fct_blk) :- function(fct_blk,x), x!="Constructor".
-blockFollows(conblk, fct_blk) :- function(fct_blk,x), function(conblk, "Constructor"), x!="Constructor".
+// Before the execution of the user-called function there is a helper block which helps sets up the taint for the input supplied by the user
+.decl arg_setup_blk(blk: Block)
+arg_setup_blk(blk), block(blk) :- blk = cat(con_blk, f_blk), function(con_blk, "Constructor"), function(f_blk, fname), fname != "Constructor".
+blockFollows(conblk, setup_blk), blockFollows(setup_blk, fblk) :-  arg_setup_blk(setup_blk), fblk = substr(setup_blk, 3, strlen(setup_blk)), function(conblk, "Constructor").
+.output blockFollows
 
 .decl terminating_ret(blk: Block)
 terminating_ret(blk) :- (return(_, blk); revert(_,blk)), !jump(_, _, blk, _).
-
 blockFollows(termblk, fctblk) :- terminating_ret(termblk), function(fctblk, fctname), fctname!="Constructor".
+
+.decl program_run(executed_blks: BlkList, sv_state: number, arg_state: number, guarded: number, hist_size: number, stack: BlkList, string_hist: symbol) // final state after executing blklist
+// base case
+program_run([nil, constructor_block], 0, 0, 0, 1, nil, constructor_block) :- function(constructor_block, "Constructor").
+
+// TODO: Come up with a way to avoid subsetting a string with substring length of 3
+// from the constructor to an intermediary block which setsup the taint on the user-defined arguments
+program_run([executed_blks, toblk], 0, arg_taint, 0, 2, nil, currhist) :-  program_run(executed_blks, 0, 0, 0, 1, nil, conblk),
+                                                                              function(conblk, "Constructor"), blockFollows(conblk, toblk), 
+                                                                              argument(id, substr(toblk, 3, strlen(toblk)), _), activate_arg_taint(arg_taint, id),
+                                                                              executed_blks = [nil, conblk], currhist = cat(con_blk, toblk). 
+
+// If we are currently at the argument setup block (for user defined input) 
+program_run([executed_blks, toblk], sv_taint, args_tainted bor arg_taint, 0, hs+1, stack, currhist) :-  program_run(executed_blks, sv_taint, args_tainted, 0, hs, stack, prehist),
+                                                                              blockFollows(last_exec_blk, toblk), arg_setup_blk(toblk),
+                                                                              argument(id, substr(toblk, 3, strlen(toblk)), _), activate_arg_taint(arg_taint, id),
+                                                                              executed_blks = [ancient_list, last_exec_blk], currhist = cat(prehist, toblk). 
+// If we are currently at a store block then setup a taint (or untaint)
+program_run([executed_blks, toblk], sv_taint, args_tainted bor arg_taint, 0, hs+1, stack, currhist) :-  program_run(executed_blks, sv_taint, args_tainted, 0, hs, stack, prehist),
+                                                                              blockFollows(last_exec_blk, toblk),  executed_blks = [ancient_list, last_exec_blk],
+                                                                              argument(id, substr(toblk, 3, strlen(toblk)), _), activate_arg_taint(arg_taint, id),
+                                                                               currhist = cat(prehist, currhist). 
+
+
+
 // If the flow so far is unguarded and the next (current) block is unguarded or has a guard which
 // depends on tainted state variables then the next state is unguarded. If the current block taints 
 // some state variables then we maintain these taints in the next state. Otherwise, we leave the taints as they are.
-program_run([executed_blks, current_blk], tainted_fields bor curr_tainted, 0, hs+1, currhist)  :- 
-  program_run(executed_blks, tainted_fields, 0, hs, hist), currhist = cat(hist, current_blk), hs < 9, block(prev_blk), blockFollows(prev_blk, current_blk), 
+
+// TODO declare a has jump condition in order to be able to push off the stack
+
+program_run([executed_blks, current_blk], tainted_fields bor curr_tainted, tainted_args, 0, hs+1, currhist)  :- 
+  program_run(executed_blks, tainted_fields, tainted_args, 0, hs, hist), currhist = cat(hist, current_blk), hs < 9, block(prev_blk), blockFollows(prev_blk, current_blk), 
   			executed_blks = [finished_blks, prev_blk],
   			(
   				(!block_taints_complete(current_blk, _, _), curr_tainted = 0);
@@ -373,8 +301,8 @@ program_run([executed_blks, current_blk], tainted_fields bor curr_tainted, 0, hs
         ).
 
 // If a program cleans a state variable
-program_run([executed_blks, current_blk], tainted_fields band curr_cleaned, 0, hs+1, currhist)  :- 
-  program_run(executed_blks, tainted_fields, 0, hs, hist), currhist = cat(hist, current_blk), hs < 9, block(prev_blk), blockFollows(prev_blk, current_blk), 
+program_run([executed_blks, current_blk], tainted_fields band curr_cleaned, tainted_arg, 0, hs+1, currhist)  :- 
+  program_run(executed_blks, tainted_fields,tainted_arg, 0, hs, hist), currhist = cat(hist, current_blk), hs < 9, block(prev_blk), blockFollows(prev_blk, current_blk), 
   			executed_blks = [finished_blks, prev_blk],
   			(
   				(!block_removes_taint_complete(current_blk, _, _), curr_cleaned = 0);
@@ -386,18 +314,18 @@ program_run([executed_blks, current_blk], tainted_fields band curr_cleaned, 0, h
         ).
 
 // Guarded flow remains guarded until it terminates
-program_run([executed_blks, current_blk], tainted_fields, 1, hs+1, currhist) :- 
-  program_run(executed_blks, tainted_fields, 1, hs, hist), currhist = cat(hist, current_blk), hs < 9, block(prev_blk), blockFollows(prev_blk, current_blk), 
+program_run([executed_blks, current_blk], tainted_fields, tainted_arg, 1, hs+1, currhist) :- 
+  program_run(executed_blks, tainted_fields, tainted_arg, 1, hs, hist), currhist = cat(hist, current_blk), hs < 9, block(prev_blk), blockFollows(prev_blk, current_blk), 
   			executed_blks = [finished_blks, prev_blk], !terminating_ret(current_blk).
  
 // Here, the guarded flow terminates
-program_run([executed_blks, current_blk], tainted_fields, 2, hs+1, currhist) :- 
-  program_run(executed_blks, tainted_fields, 1, hs, hist), currhist = cat(hist, current_blk), hs < 9, block(prev_blk), blockFollows(prev_blk, current_blk), 
+program_run([executed_blks, current_blk], tainted_fields,tainted_arg, 2, hs+1, currhist) :- 
+  program_run(executed_blks, tainted_fields, tainted_arg, 1, hs, hist), currhist = cat(hist, current_blk), hs < 9, block(prev_blk), blockFollows(prev_blk, current_blk), 
   			executed_blks = [finished_blks, prev_blk], terminating_ret(current_blk).
   			
 // Guarded flow from an unguarded flow if there is a guard
-program_run([executed_blks, current_blk], tainted_fields, 1, hs+1, currhist) :- 
-  program_run(executed_blks, tainted_fields, 0, hs, hist), currhist = cat(hist, current_blk), hs < 9, block(prev_blk), blockFollows(prev_blk, current_blk), 
+program_run([executed_blks, current_blk], tainted_fields, tainted_arg, 1, hs+1, currhist) :- 
+  program_run(executed_blks, tainted_fields, tainted_arg, 0, hs, hist), currhist = cat(hist, current_blk), hs < 9, block(prev_blk), blockFollows(prev_blk, current_blk), 
   			executed_blks = [finished_blks, prev_blk], 
   			(
   				(!block_taints_complete(current_blk, _, _), curr_tainted = 0);
@@ -408,7 +336,7 @@ program_run([executed_blks, current_blk], tainted_fields, 1, hs+1, currhist) :-
 
 tainted_sinks(stmt), debugInfo(executed_blks, tainted_fields, currhist):-
   			selfdestruct(stmt, addr), blockStmt(current_blk, stmt),
-  			program_run(executed_blks, tainted_fields, 0, _, currhist), block(prev_blk), blockFollows(prev_blk, current_blk), 
+  			program_run(executed_blks, tainted_fields, tainted_arg, 0, _, currhist), block(prev_blk), blockFollows(prev_blk, current_blk), 
   			executed_blks = [finished_blks, prev_blk], 
   			(
   				(!block_taints_complete(current_blk, _, _), curr_tainted = 0);
