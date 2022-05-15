@@ -266,7 +266,7 @@ doesModify(blk) :- store(stmt, _, _), blockStmt(blk, stmt).
 hasChildren(blk) :- blockFollows(blk, _); jump(_, blk, _, _).
 
 
-// If we are currently at the argument setup block (for user defined input) 
+// If we are currently at the argument setup block (for user defined input)  -- seems unncessary given the bottom-most rule
 program_run([executed_blks, to_blk], sv_taint, args_tainted bor arg_taint, 0, hs+1, stack, currhist) :-  
         program_run(executed_blks, sv_taint, args_tainted, 0, hs, stack, prehist),
         blockFollows(last_exec_blk, to_blk), arg_setup_blk(to_blk),
@@ -293,7 +293,7 @@ program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, 0, hs, st
         hs < 4.
 
 
-// Handle state variable taint transfer (ungarded) 
+// Handle state variable taint transfer (ungarded). TODO: check first there is NO guard
 program_run([executed_blks, to_blk], final_state, args_tainted, 0, hs+1, stack, cat(prehist, to_blk)) :- 
         program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist),
         executed_blks = [prev_exec, last_blk], blockFollows(last_blk, to_blk), !arg_setup_blk(to_blk), // NOT SURE if !arg_setup_blk() is really needed
@@ -315,18 +315,12 @@ program_run([executed_blks, to_blk], final_state, args_tainted, 0, hs+1, stack, 
         ),
         hs < 4.
 
-// Handle jump arguments and stack (ungarded)
-program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, 0, hs, new_stack, prehist) :- 
+//  ******************* START: JUMP LOGIC  *******************
+// Handle jump arguments and stack (ungarded). Amro: removed the stack from here since it was being done in the JMP CTRL transfer below
+program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, 0, hs, stack, prehist) :- 
         program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist),
         executed_blks = [prev_exec, last_blk], jump(_, last_blk, to_blk, cont_blk),
-        
-        (
-            (((stack = [rest, top], top !=cont_blk);stack = nil), new_stack = [stack, cont_blk] );
-            ((stack = [rest, top], top=cont_blk), new_stack = stack )
-        ),
-
-        ssa_depens_complete(id_val, args_val, sv_val, sndr_val, cnt_val),
-
+        arg_flow(arg, id_val, _, last_blk, to_blk), ssa_depens_complete(id_val, args_val, sv_val, sndr_val, cnt_val),
         arg_taint_dep = args_val band args_tainted,
         sv_taint_dep = sv_val band sv_tainted,
         is_id_val_taint = (arg_taint_dep bor sv_taint_dep) bor sndr_val,
@@ -336,7 +330,7 @@ program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, 0, hs, ne
         ).
 
 
-// Jump ctrl transfer
+// Jump ctrl transfer (longBlock logic to be done later)
 program_run([executed_blks, to_blk], final_state, args_tainted, 0, hs, new_stack, currhist) :- 
          program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist),
          executed_blks = [prev_exec, last_blk], jump(_, last_blk, to_blk, cont_blk), 
@@ -361,6 +355,45 @@ program_run([executed_blks, to_blk], final_state, args_tainted, 0, hs, new_stack
 
 
 // Return ctrl transfer
+program_run([executed_blks, to_blk], final_state, args_tainted, 0, hs+1, new_stack, currhist) :- 
+         program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist),
+         executed_blks = [prev_exec, last_blk], return(_, last_blk), block(to_blk), stack = [prev_stack, to_blk], 
+         new_stack = prev_stack, !longBlock(to_blk),
+         (
+            (
+                block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),        
+                arg_taint_dep = arg_dep band args_tainted,
+                sv_taint_dep = state_dep band sv_tainted,
+                is_sv_val_taint = (arg_taint_dep bor sv_taint_dep) bor sndr_dep,
+                (
+                    (is_sv_val_taint != 0, sv_bv(bv, field), final_state = bv bor sv_tainted);
+                    (is_sv_val_taint = 0, sv_bv(bv, field), final_state = (bnot bv) band sv_tainted)
+                )
+            );
+            // block does not modify sv 
+            (
+                !doesModify(to_blk), final_state = sv_tainted
+            )
+         ), currhist = cat(prehist, to_blk),
+         hs < 4.
+
+// Jump argument transfer
+program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, 0, hs, stack, prehist) :- 
+        program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist),
+        executed_blks = [prev_exec, last_blk], return(_, last_blk), block(to_blk), stack = [prev_stack, to_blk], 
+        !longBlock(to_blk),
+        arg_flow(arg, id_val, _, last_blk, to_blk), ssa_depens_complete(id_val, args_val, sv_val, sndr_val, cnt_val),
+        arg_taint_dep = args_val band args_tainted,
+        sv_taint_dep = sv_val band sv_tainted,
+        is_id_val_taint = (arg_taint_dep bor sv_taint_dep) bor sndr_val,
+        (
+            (is_id_val_taint != 0, arg_bv(bv, arg), new_arg_taint=bv);
+            (is_id_val_taint = 0, new_arg_taint = 0) 
+        ).
+
+
+//  ******************* END: JUMP LOGIC  *******************
+
 
 // ******************* START: FUNCTION EXECUTION FINISHED *******************
 
