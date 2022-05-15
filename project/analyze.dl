@@ -293,8 +293,8 @@ program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, 0, hs, st
         hs < 4.
 
 
-// Handle state variable taint transfer (ungarded) // TODO: add state var cleaning
-program_run([executed_blks, to_blk], sv_tainted bor new_sv_taint, args_tainted, 0, hs+1, stack, cat(prehist, to_blk)) :- 
+// Handle state variable taint transfer (ungarded) 
+program_run([executed_blks, to_blk], final_state, args_tainted, 0, hs+1, stack, cat(prehist, to_blk)) :- 
         program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist),
         executed_blks = [prev_exec, last_blk], blockFollows(last_blk, to_blk), !arg_setup_blk(to_blk), // NOT SURE if !arg_setup_blk() is really needed
         (
@@ -304,13 +304,12 @@ program_run([executed_blks, to_blk], sv_tainted bor new_sv_taint, args_tainted, 
                     sv_taint_dep = state_dep band sv_tainted,
                     is_sv_val_taint = (arg_taint_dep bor sv_taint_dep) bor sndr_dep,
                     (
-                        (is_sv_val_taint != 0, sv_bv(bv, field), new_sv_taint = bv);
-                        (is_sv_val_taint = 0, new_sv_taint = 0)
-
+                        (is_sv_val_taint != 0, sv_bv(bv, field), final_state = bv bor sv_tainted);
+                        (is_sv_val_taint = 0, sv_bv(bv, field), final_state = (bnot bv) band sv_tainted)
                     )
             );
             (
-                !doesModify(to_blk), new_sv_taint = 0
+                !doesModify(to_blk), final_state = sv_tainted
             )
 
         ),
@@ -350,7 +349,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, 0, hs, new_stack
                 is_sv_val_taint = (arg_taint_dep bor sv_taint_dep) bor sndr_dep,
                 (
                     (is_sv_val_taint != 0, sv_bv(bv, field), final_state = bv bor sv_tainted);
-                    (is_sv_val_taint = 0, new_sv_taint = 0, final_state = sv_tainted)
+                    (is_sv_val_taint = 0, sv_bv(bv, field), final_state = (bnot bv) band sv_tainted)
                 )
             );
             // block does not modify sv 
