@@ -254,17 +254,11 @@ blockFollows(conblk, setup_blk), blockFollows(setup_blk, fblk) :-  arg_setup_blk
 program_run([nil, constructor_block], 0, 0, 0, 1, nil, "C") :- function(constructor_block, "Constructor").
 
 
-
-
 .decl hasArg(blk: Block)
 hasArg(blk) :- argument(_, blk, _).
 
 .decl doesModify(blk: Block)
 doesModify(blk) :- store(stmt, _, _), blockStmt(blk, stmt).
-
-.decl hasChildren(blk: Block)
-hasChildren(blk) :- blockFollows(blk, _); jump(_, blk, _, _).
-
 
 // If we are currently at the argument setup block (for user defined input)  -- removed tainting new record's arguments, see the bottom-most rule
 program_run([executed_blks, to_blk], sv_taint, args_tainted, 0, hs+1, stack, currhist) :-  
@@ -289,7 +283,7 @@ program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, 0, hs, st
         hs < 4.
 
 
-// Handle state variable taint transfer (ungarded). TODO: check first there is NO guard inside last_blk to know if we can still remain in unguarded state 
+// Handle state variable taint transfer (ungarded). New: checks first there is NO guard inside last_blk to know if we can still remain in unguarded state 
 program_run([executed_blks, to_blk], final_state, args_tainted, 0, hs+1, stack, cat(prehist, to_blk)) :- 
         program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist),
         executed_blks = [prev_exec, last_blk], blockFollows(last_blk, to_blk), !arg_setup_blk(to_blk), // NOT SURE if !arg_setup_blk() is really needed
@@ -308,6 +302,16 @@ program_run([executed_blks, to_blk], final_state, args_tainted, 0, hs+1, stack, 
                 !doesModify(to_blk), final_state = sv_tainted
             )
 
+        ), 
+        (
+            unguarded_block(last_blk);
+            (
+                safe_guarded_block(last_blk, guard_sv_dep, guard_arg_dep), 
+                has_arg_dep = guard_arg_dep band args_tainted, 
+                has_sv_dep =  guard_sv_dep band sv_tainted,
+                is_tainted = has_arg_dep bor has_sv_dep,
+                is_tainted != 0
+            ) 
         ),
         hs < 4.
 
@@ -422,7 +426,6 @@ program_run(executed_blks, sv_tainted, args_tainted bor arg_taint, 0, hs, stack,
 .output tainted_sinks
 .output blockFollows
 .output arg_setup_blk
-.output hasChildren
 /*.output blockDominates
 .output blockFollows
 .output blockFollowsTransitive
