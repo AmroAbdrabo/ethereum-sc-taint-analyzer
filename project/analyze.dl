@@ -362,31 +362,30 @@ program_run([executed_blks, to_blk], final_state, args_tainted, 0, hs, new_stack
 
 // Return ctrl transfer
 
-// return to user control (from normal return)
-program_run([executed_blks, to_blk], sv_tainted, args_tainted bor arg_taint, 0, hs+1, stack, currhist) :- 
+// ******************* START: FUNCTION EXECUTION FINISHED *******************
+
+// return to argument setup block (from normal return). NB: the arguments are reset as untainted
+program_run([executed_blks, to_blk], sv_tainted, 0, 0, hs+1, stack, currhist) :- 
     program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = nil,
-    arg_setup_blk(to_blk),
-    (
-        (argument(id, substr(to_blk, 3, strlen(to_blk)), _), arg_bv(arg_taint, id));
-        (arg_taint = 0, !hasArg(substr(to_blk, 3, strlen(to_blk))))
-    ),
-    currhist = cat(prehist, cat("->",substr(to_blk, 3, strlen(to_blk)))),
+    arg_setup_blk(to_blk), currhist = cat(prehist, cat("->",substr(to_blk, 3, strlen(to_blk)))),
     hs < 4. 
 
-
-// revert resets state variables and arguments 
-program_run([executed_blks, to_blk], 0, arg_taint, 0, hs+1, stack, currhist) :- 
+// return to argument setup block (from revert). NB: the arguments are reset as untainted
+program_run([executed_blks, to_blk], 0, 0, 0, hs+1, nil, currhist) :- 
     program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], revert(_, last_blk),
-    arg_setup_blk(to_blk),
-    (
-        (argument(id, substr(to_blk, 3, strlen(to_blk)), _), arg_bv(arg_taint, id));
-        (arg_taint = 0, !hasArg(substr(to_blk, 3, strlen(to_blk))))
-    ),
-    currhist = cat(prehist, cat("->",substr(to_blk, 3, strlen(to_blk)))),
+    arg_setup_blk(to_blk), currhist = cat(prehist, cat("->",substr(to_blk, 3, strlen(to_blk)))),
     hs < 4. 
 
+// setup arguments inside argument setup block
+program_run(executed_blks, sv_tainted, args_tainted bor arg_taint, 0, hs+1, stack, currhist) :- 
+    program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist), 
+    executed_blks = [prev_exec, last_blk], arg_setup_blk(last_blk), currhist = cat(prehist, " SetArgs "),
+    argument(id, substr(last_blk, 3, strlen(last_blk)), _), arg_bv(arg_taint, id),  // no need to worry about the case where there is no arguments 
+    hs < 4. 
+
+// ******************* END: FUNCTION EXECUTION FINISHED *******************
 
 
 
