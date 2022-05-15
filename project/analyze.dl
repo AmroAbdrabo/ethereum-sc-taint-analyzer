@@ -379,9 +379,9 @@ program_run([executed_blks, to_blk], 0, 0, 0, hs+1, nil, currhist) :-
     hs < 4. 
 
 // setup arguments inside argument setup block
-program_run(executed_blks, sv_tainted, args_tainted bor arg_taint, 0, hs, stack, currhist) :- 
+program_run(executed_blks, sv_tainted, args_tainted bor arg_taint, 0, hs, stack, prehist) :- 
     program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist), 
-    executed_blks = [prev_exec, last_blk], arg_setup_blk(last_blk), currhist = cat(prehist, " SetArgs "),
+    executed_blks = [prev_exec, last_blk], arg_setup_blk(last_blk),  // if you append new history here, this rule will run forever and program will crash
     argument(id, substr(last_blk, 3, strlen(last_blk)), _), arg_bv(arg_taint, id),  // no need to worry about the case where there is no arguments 
     hs < 4. 
 
