@@ -343,10 +343,10 @@ program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, 0, hs, ne
 
 
 
-// return to user control
+// return to user control (from normal return)
 program_run([executed_blks, to_blk], sv_tainted, args_tainted bor arg_taint, 0, hs+1, stack, currhist) :- 
     program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist), 
-    executed_blks = [prev_exec, last_blk], ((return(_, last_blk), stack = nil); revert(_, last_blk)),
+    executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = nil,
     arg_setup_blk(to_blk),
     (
         (argument(id, substr(to_blk, 3, strlen(to_blk)), _), arg_bv(arg_taint, id));
@@ -355,6 +355,18 @@ program_run([executed_blks, to_blk], sv_tainted, args_tainted bor arg_taint, 0, 
     currhist = cat(prehist, cat("->",substr(to_blk, 3, strlen(to_blk)))),
     hs < 4. 
 
+
+// revert resets state variables and arguments 
+program_run([executed_blks, to_blk], 0, arg_taint, 0, hs+1, stack, currhist) :- 
+    program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist), 
+    executed_blks = [prev_exec, last_blk], revert(_, last_blk),
+    arg_setup_blk(to_blk),
+    (
+        (argument(id, substr(to_blk, 3, strlen(to_blk)), _), arg_bv(arg_taint, id));
+        (arg_taint = 0, !hasArg(substr(to_blk, 3, strlen(to_blk))))
+    ),
+    currhist = cat(prehist, cat("->",substr(to_blk, 3, strlen(to_blk)))),
+    hs < 4. 
 
 
 
