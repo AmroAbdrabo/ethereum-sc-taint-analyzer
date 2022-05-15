@@ -91,7 +91,7 @@
 
 // -- output relations --
 .decl tainted_sinks(id: SSA)
-tainted_sinks(id) :-selfdestruct(id, _).
+
 
 // Useful (wallah)
 .decl msgSender(id: SSA)
@@ -280,7 +280,7 @@ program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, 0, hs, st
             (is_id_val_taint != 0, arg_bv(bv, arg), new_arg_taint=bv);
             (is_id_val_taint = 0, new_arg_taint = 0) 
         ),
-        hs < 4.
+        hs < 8.
 
 
 // Handle state variable taint transfer (ungarded). New: checks first there is NO guard inside last_blk to know if we can still remain in unguarded state 
@@ -313,7 +313,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, 0, hs+1, stack, 
                 is_tainted != 0
             ) 
         ),
-        hs < 4.
+        hs < 8.
 
 //  ******************* START: JUMP LOGIC  *******************
 // Handle jump arguments and stack (ungarded). Amro: removed the stack from here since it was being done in the JMP CTRL transfer below
@@ -351,7 +351,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, 0, hs, new_stack
                 !doesModify(to_blk), final_state = sv_tainted
             )
          ), currhist = cat(prehist, to_blk),
-         hs < 4.
+         hs < 8.
 
 
 // Return ctrl transfer
@@ -375,7 +375,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, 0, hs+1, new_sta
                 !doesModify(to_blk), final_state = sv_tainted
             )
          ), currhist = cat(prehist, to_blk),
-         hs < 4.
+         hs < 8.
 
 // Jump argument transfer
 program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, 0, hs, stack, prehist) :- 
@@ -402,24 +402,30 @@ program_run([executed_blks, to_blk], sv_tainted, 0, 0, hs+1, stack, currhist) :-
     program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = nil,
     arg_setup_blk(to_blk), currhist = cat(prehist, cat("->",substr(to_blk, 3, strlen(to_blk)))),
-    hs < 4. 
+    hs < 8. 
 
 // return to argument setup block (from revert). NB: the arguments are reset as untainted
 program_run([executed_blks, to_blk], 0, 0, 0, hs+1, nil, currhist) :- 
     program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], revert(_, last_blk),
     arg_setup_blk(to_blk), currhist = cat(prehist, cat("->",substr(to_blk, 3, strlen(to_blk)))),
-    hs < 4. 
+    hs < 8. 
 
 // setup arguments inside argument setup block
 program_run(executed_blks, sv_tainted, args_tainted bor arg_taint, 0, hs, stack, prehist) :- 
     program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], arg_setup_blk(last_blk),  // if you append new history here, this rule will run forever and program will crash
     argument(id, substr(last_blk, 3, strlen(last_blk)), _), arg_bv(arg_taint, id),  // no need to worry about the case where there is no arguments 
-    hs < 4. 
+    hs < 8. 
 
 // ******************* END: FUNCTION EXECUTION FINISHED *******************
 
+
+// ******************* START: SELFDESTRUCT LOGIC *******************
+tainted_sinks(id) :-selfdestruct(id, addr), program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist), blockStmt(last_blk, id),
+                    executed_blks = [prev_blks, last_blk], ssa_depens_complete(addr, args_dep, sv_dep, sndr, cnt), 
+                    has_tainted_arg = args_dep band args_tainted, has_tainted_sv = sv_dep band sv_tainted, is_tainted = has_tainted_arg bor has_tainted_sv bor sndr,
+                    is_tainted != 0.
 
 
 .output program_run
