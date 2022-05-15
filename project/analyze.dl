@@ -376,7 +376,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, 0, hs+1, new_sta
 // Jump argument transfer
 program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, 0, hs, stack, prehist) :- 
         program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist),
-        executed_blks = [prev_exec, last_blk], return(_, last_blk), block(to_blk), stack = [prev_stack, to_blk], 
+        executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = [prev_stack, to_blk], 
         !longBlock(to_blk),
         arg_flow(arg, id_val, _, last_blk, to_blk), ssa_depens_complete(id_val, args_val, sv_val, sndr_val, cnt_val),
         arg_taint_dep = args_val band args_tainted,
