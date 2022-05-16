@@ -195,7 +195,7 @@ not_follows_immediately(from, to, parent) :- not_follows_immediately(from, mid, 
 
 // connect all the individual store blocks together
 blockFollows(id_block_from, id_block_to) :- store_block(id_block_from, parent, sid_from),
-  store_block(id_block_to, parent, sid_to), !not_follows_immediately(sid_from, sid_to, parent).
+  store_block(id_block_to, parent, sid_to), sid_from < sid_to, !not_follows_immediately(sid_from, sid_to, parent).
 
 .decl not_first_store(sblk: Block, sid: number, parent: Block)
 not_first_store(sblk, sid, parent) :- store_block(sblk, parent, sid), store_block(_, parent, sid2), sid2 < sid.
@@ -242,7 +242,9 @@ blockFollows(id_block_from, id_block_to) :-  (branch(_, _, id_block_from, parent
 // Before the execution of the user-called function there is a helper block which helps sets up the taint for the input supplied by the user
 .decl arg_setup_blk(blk: Block)
 arg_setup_blk(blk), block(blk) :- blk = cat(con_blk, f_blk), function(con_blk, "Constructor"), function(f_blk, fname), fname != "Constructor".
-blockFollows(conblk, setup_blk), blockFollows(setup_blk, fblk) :-  arg_setup_blk(setup_blk), fblk = substr(setup_blk, 3, strlen(setup_blk)), function(conblk, "Constructor").
+blockFollows(conblk, setup_blk) :- arg_setup_blk(setup_blk), fblk = substr(setup_blk, 3, strlen(setup_blk)), function(conblk, "Constructor").
+blockFollows(setup_blk, fblk) :-  arg_setup_blk(setup_blk), !longBlock(fblk), fblk = substr(setup_blk, 3, strlen(setup_blk)).
+blockFollows(setup_blk, sblk) :-  arg_setup_blk(setup_blk), longBlock(fblk), fblk = substr(setup_blk, 3, strlen(setup_blk)), store_block(sblk, fblk, _), !not_first_store(sblk, _, fblk).
 .output blockFollows
 
 
@@ -258,7 +260,8 @@ program_run([nil, constructor_block], 0, 0, 0, 1, nil, "C") :- function(construc
 hasArg(blk) :- argument(_, blk, _).
 
 .decl doesModify(blk: Block)
-doesModify(blk) :- store(stmt, _, _), blockStmt(blk, stmt).
+doesModify(blk) :- block_modifies_sv(blk, _, _, _, _). //store(stmt, _, _), blockStmt(blk, stmt).
+.output doesModify
 
 // If we are currently at the argument setup block (for user defined input)  -- removed tainting new record's arguments, see the bottom-most rule
 program_run([executed_blks, to_blk], sv_taint, args_tainted, 0, hs+1, stack, currhist) :-  
