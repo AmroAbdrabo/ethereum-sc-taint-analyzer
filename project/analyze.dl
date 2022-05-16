@@ -260,8 +260,7 @@ program_run([nil, constructor_block], 0, 0, 0, 1, nil, "C") :- function(construc
 hasArg(blk) :- argument(_, blk, _).
 
 .decl doesModify(blk: Block)
-doesModify(blk) :- block_modifies_sv(blk, _, _, _, _). //store(stmt, _, _), blockStmt(blk, stmt).
-.output doesModify
+doesModify(blk) :- block_modifies_sv(blk, _, _, _, _). 
 
 // If we are currently at the argument setup block (for user defined input)  -- removed tainting new record's arguments, see the bottom-most rule
 program_run([executed_blks, to_blk], sv_taint, args_tainted, 0, hs+1, stack, currhist) :-  
