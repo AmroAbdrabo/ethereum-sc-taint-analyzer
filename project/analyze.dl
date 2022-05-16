@@ -167,8 +167,13 @@ safe_condition(stmt, sv, arg) :- ssa_depens_complete(stmt, arg, sv, 1, _).
 .decl safe_guarded_block(blk: Block, state_dependency: number, arg_dependency: number)
 safe_guarded_block(blk, state_dependency, arg_dependency) :- safe_condition(stmt, state_dependency, arg_dependency), branch(_,_, blk,_,_, stmt).// blockStmt(blk,stmt). block with safe guard condition need not have the var_cond defined inside the block (example: T0:: A02)
 
-.decl unguarded_block(blk: Block)
-unguarded_block(blk) :- block(blk), !safe_guarded_block(blk, _, _). // NB: a block can also be "unguarded" if some of its dependencies become tainted
+.decl unconditioned_block(blk: Block)
+// Captures blocks which are not guarded (as in those that do have a condition that does NOT depend on msg.sender, and also those that do not have a condition alas)
+unconditioned_block(blk) :- block(blk), !branch(_, _, blk, _, _, stmt). // !safe_guarded_block(blk, _, _). // NB: a block can also be "unguarded" if some of its dependencies become tainted
+
+// Conditioned but not guarded (i.e. has branch which has no dependence on msg.sender)
+.decl unguarded_block(blk: Block, args: number, sv: number)
+unguarded_block(blk, args, sv) :- branch(_, _, blk, _, _, stmt), !safe_guarded_block(blk, _, _), ssa_depens_complete(stmt, args, sv, 0, _).
 
 // ***************** argument transfer *****************
 .decl arg_flow(arg: SSA, id_val: SSA, idx: number, block_from: Block, block_to: Block)
@@ -202,10 +207,6 @@ not_first_store(sblk, sid, parent) :- store_block(sblk, parent, sid), store_bloc
 
 .decl not_last_store(sblk: Block, sid: number, parent: Block)
 not_last_store(sblk, sid, parent) :- store_block(sblk, parent, sid), store_block(_, parent, sid2), sid2 > sid.
-
-
-
-
 
 
 .decl store_block(store_block: Block, parent_block: Block, stmt_order: number)
@@ -269,8 +270,8 @@ program_run([executed_blks, to_blk], sv_taint, args_tainted, 0, hs+1, stack, cur
         executed_blks = [ancient_list, last_exec_blk], currhist = cat(prehist, cat("->",substr(to_blk, 3, strlen(to_blk)))). 
 
 // Handle argument taint transfer (ungarded)
-program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, 0, hs, stack, prehist) :- 
-        program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist),
+program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, state, hs, stack, prehist) :- 
+        program_run(executed_blks, sv_tainted, args_tainted, state, hs, stack, prehist),
         executed_blks = [prev_exec, last_blk], blockFollows(last_blk, to_blk),
         arg_flow(arg, id_val, idx, last_blk, to_blk),
         ssa_depens_complete(id_val, args_val, sv_val, sndr_val, cnt_val),
@@ -306,7 +307,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, 0, hs+1, stack, 
 
         ), 
         (
-            unguarded_block(last_blk);
+            unconditioned_block(last_blk);
             (
                 safe_guarded_block(last_blk, guard_sv_dep, guard_arg_dep), 
                 has_arg_dep = guard_arg_dep band args_tainted, 
