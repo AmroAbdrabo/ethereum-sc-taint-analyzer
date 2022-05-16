@@ -333,8 +333,9 @@ program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, 0, hs, st
 // Jump ctrl transfer (longBlock logic to be done later)
 program_run([executed_blks, to_blk], final_state, args_tainted, 0, hs, new_stack, currhist) :- 
          program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist),
-         executed_blks = [prev_exec, last_blk], jump(_, last_blk, to_blk, cont_blk), 
-         new_stack = [stack, cont_blk],  !longBlock(to_blk),
+         executed_blks = [prev_exec, last_blk], jump(_, last_blk, parent_blk, cont_blk), 
+         new_stack = [stack, cont_blk],  ((!longBlock(parent_blk), to_blk = parent_blk);
+         (longBlock(parent_blk), !not_first_store(to_blk, sid, parent_blk), store_block(to_blk, parent, sid))),
          (
             (
                 block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),        
@@ -357,8 +358,9 @@ program_run([executed_blks, to_blk], final_state, args_tainted, 0, hs, new_stack
 // Return ctrl transfer
 program_run([executed_blks, to_blk], final_state, args_tainted, 0, hs+1, new_stack, currhist) :- 
          program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist),
-         executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = [prev_stack, to_blk], 
-         new_stack = prev_stack, !longBlock(to_blk),
+         executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = [prev_stack, parent_blk], 
+         new_stack = prev_stack,  ((!longBlock(parent_blk), to_blk = parent_blk);
+         (longBlock(parent_blk), !not_first_store(to_blk, sid, parent_blk), store_block(to_blk, parent, sid))),
          (
             (
                 block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),        
