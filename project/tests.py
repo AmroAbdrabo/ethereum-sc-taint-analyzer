@@ -58,7 +58,7 @@ def run_tests(arg):
         # Test passed 1
         if solutions[f] == result:
             print(f"\033[92mPASSED:\033[0m {f}")
-            score += 1
+            score += result == 'Safe'
             no_passed += 1
             pass
         else:
@@ -73,7 +73,8 @@ def run_tests(arg):
             print(f"{color}FAILED:\033[0m {f} expected: {solutions[f]}, got: {result}")
 
     if not args.t:
-        print(f"Passed ({no_passed}/{len(solutions)}) with score ({score}/{len(solutions)})")
+        no_safe_tests = len([v for k,v in solutions.items() if v == 'Safe'])
+        print(f"Passed ({no_passed}/{len(solutions)}) with score ({score}/{no_safe_tests})")
 
     return
 
