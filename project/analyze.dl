@@ -163,7 +163,7 @@ block_modifies_sv(blk, field, state_dep, arg_dep, sndr_dep) :- store(stmt, field
 // (Potentially) safe condition with dependency on state variables
 safe_condition(stmt, sv, arg) :- ssa_depens_complete(stmt, arg, sv, 1, _). 
 
-// TODO: take into account argument transfers (see example 8)  
+// TODO: take into account argument transfers (see example 10)  
 .decl safe_guarded_block(blk: Block, state_dependency: number, arg_dependency: number)
 safe_guarded_block(blk, state_dependency, arg_dependency) :- safe_condition(stmt, state_dependency, arg_dependency), branch(_,_, blk,_,_, stmt).// blockStmt(blk,stmt). block with safe guard condition need not have the var_cond defined inside the block (example: T0:: A02)
 
@@ -283,7 +283,7 @@ program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, state, hs
             (is_id_val_taint != 0, arg_bv(bv, arg), new_arg_taint=bv);
             (is_id_val_taint = 0, new_arg_taint = 0) 
         ),
-        hs < 8.
+        hs < 10.
 
 
 // Handle state variable taint transfer (ungarded). New: checks first there is NO guard inside last_blk to know if we can still remain in unguarded state 
@@ -326,7 +326,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, hs+1,
                 ((is_tainted = 0, state_end = 0);(is_tainted != 0, state_end = 1))
             ) 
         ),
-        hs < 8.
+        hs < 10.
 
 //  ******************* START: JUMP LOGIC  *******************
 // Handle jump arguments and stack (ungarded). Amro: removed the stack from here since it was being done in the JMP CTRL transfer below
@@ -365,7 +365,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state, hs, new_s
                 !doesModify(to_blk), final_state = sv_tainted
             )
          ), currhist = cat(prehist, to_blk),
-         hs < 8.
+         hs < 10.
 
 
 // Return ctrl transfer
@@ -390,7 +390,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state, hs+1, new
                 !doesModify(to_blk), final_state = sv_tainted
             )
          ), currhist = cat(prehist, to_blk),
-         hs < 8.
+         hs < 10.
 
 // Jump argument transfer
 program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, state, hs, stack, prehist) :- 
@@ -417,21 +417,21 @@ program_run([executed_blks, to_blk], sv_tainted, 0, 0, hs+1, stack, currhist) :-
     program_run(executed_blks, sv_tainted, args_tainted, state, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = nil,
     arg_setup_blk(to_blk), currhist = cat(prehist, cat("->",substr(to_blk, 3, strlen(to_blk)))),
-    hs < 8. 
+    hs < 10. 
 
 // return to argument setup block (from revert). NB: the arguments are reset as untainted
 program_run([executed_blks, to_blk], 0, 0, 0, hs+1, nil, currhist) :- 
     program_run(executed_blks, sv_tainted, args_tainted, state, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], revert(_, last_blk),
     arg_setup_blk(to_blk), currhist = cat(prehist, cat("->",substr(to_blk, 3, strlen(to_blk)))),
-    hs < 8. 
+    hs < 10. 
 
 // setup arguments inside argument setup block
 program_run(executed_blks, sv_tainted, args_tainted bor arg_taint, 0, hs, stack, prehist) :- 
     program_run(executed_blks, sv_tainted, args_tainted, 0, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], arg_setup_blk(last_blk),  // if you append new history here, this rule will run forever and program will crash
     argument(id, substr(last_blk, 3, strlen(last_blk)), _), arg_bv(arg_taint, id),  // no need to worry about the case where there is no arguments 
-    hs < 8. 
+    hs < 10. 
 
 // ******************* END: FUNCTION EXECUTION FINISHED *******************
 
