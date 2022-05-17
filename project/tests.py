@@ -1,10 +1,9 @@
 import os
 import subprocess
+import argparse
+
 
 CONTRACTS_PATH = './project/test_contracts'
-
-
-
 
 def create_solutions():
     # filename -> [True=vulnerable contract | False=safe contract]
@@ -43,11 +42,15 @@ def get_solutions():
         return vulnerable
 
 
-def run_tests():
+def run_tests(arg):
     
     solutions = get_solutions()
     score = 0
     no_passed = 0
+    
+    # if single test run argument was provided
+    if arg:
+        solutions = {arg+'.sol': solutions[arg+'.sol']}
 
     for f in solutions.keys():
         result  = subprocess.run(['python', './analyze.py', f'./test_contracts/{f}'], stdout=subprocess.PIPE).stdout.decode('utf-8').rstrip()
@@ -69,12 +72,18 @@ def run_tests():
 
             print(f"{color}FAILED:\033[0m {f} expected: {solutions[f]}, got: {result}")
 
-    print(f"Passed ({no_passed}/{len(solutions)}) with score ({score}/{len(solutions)})")
+    if not args.t:
+        print(f"Passed ({no_passed}/{len(solutions)}) with score ({score}/{len(solutions)})")
 
     return
 
 if __name__ == "__main__":
     # create_solutions()
     # get_solutions()
-    run_tests()
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--t', type=str, required=False)
+    args = parser.parse_args()
+
+    run_tests(args.t)
 
