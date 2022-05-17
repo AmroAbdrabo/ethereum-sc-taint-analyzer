@@ -262,6 +262,9 @@ hasArg(blk) :- argument(_, blk, _).
 
 .decl doesModify(blk: Block)
 doesModify(blk) :- block_modifies_sv(blk, _, _, _, _). 
+// State 0: unguarded
+// State 1: antiguarded
+// State 2: privileged user (has untainted user input, but can act as a confused deputy-- see 14.sol)
 
 // If we are currently at the argument setup block (for user defined input)  -- removed tainting new record's arguments, see the bottom-most rule
 program_run([executed_blks, to_blk], sv_taint, args_tainted, 0, hs+1, stack, currhist) :-  
