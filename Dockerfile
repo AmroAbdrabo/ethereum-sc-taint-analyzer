@@ -70,4 +70,4 @@ WORKDIR /root/project
 
 CMD ["/bin/bash"]
 # add useful commads to bashrc
-RUN touch ~/.bashrc && echo "alias rt='python tests.py'\npr(){\npython ~/project/analyze.py ~/project/test_contracts/$1.sol\n}\nprv(){\npython ~/project/analyze.py --visualize ~/project/test_contracts/$1.sol\n}\nsr(){\ncat /root/project/test_contracts/$1_out/facts_out/$2.csv\n}\n" >> ~/.bashrc
+RUN touch ~/.bashrc && echo "alias rt='python tests.py'\n\npr(){\npython ~/project/analyze.py ~/project/test_contracts/\$1.sol\n}\nprv(){\npython ~/project/analyze.py --visualize ~/project/test_contracts/\$1.sol\n}\nsr(){\ncat /root/project/test_contracts/\$1_out/facts_out/\$2.csv\n}\n" >> ~/.bashrc

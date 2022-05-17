@@ -53,7 +53,7 @@ def run_tests():
         result  = subprocess.run(['python', './analyze.py', f'./test_contracts/{f}'], stdout=subprocess.PIPE).stdout.decode('utf-8').rstrip()
 
         # Test passed 1
-        if solutions[f]  == result:
+        if solutions[f] == result:
             print(f"\033[92mPASSED:\033[0m {f}")
             score += 1
             no_passed += 1
