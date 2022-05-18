@@ -286,7 +286,7 @@ program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, state, hs
             (is_id_val_taint != 0, arg_bv(bv, arg), new_arg_taint=bv);
             (is_id_val_taint = 0, new_arg_taint = 0) 
         ),
-        hs < 10.
+        hs < 15.
 
 
 // Handle state variable taint transfer (ungarded). New: checks first there is NO guard inside last_blk to know if we can still remain in unguarded state 
@@ -329,7 +329,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, hs+1,
                 ((is_tainted = 0, state_end = 0);(is_tainted != 0, state_end = 1))
             ) 
         ),
-        hs < 10.
+        hs < 15.
 
 //  ******************* START: JUMP LOGIC  *******************
 // Handle jump arguments and stack (ungarded). Amro: removed the stack from here since it was being done in the JMP CTRL transfer below
@@ -368,7 +368,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state, hs, new_s
                 !doesModify(to_blk), final_state = sv_tainted
             )
          ), currhist = cat(prehist, to_blk),
-         hs < 10.
+         hs < 15.
 
 
 // Return ctrl transfer
@@ -393,7 +393,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state, hs+1, new
                 !doesModify(to_blk), final_state = sv_tainted
             )
          ), currhist = cat(prehist, to_blk),
-         hs < 10.
+         hs < 15.
 
 // Jump argument transfer
 program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, state, hs, stack, prehist) :- 

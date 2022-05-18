@@ -55,17 +55,17 @@ def run_tests(arg):
     for f in solutions.keys():
         result  = subprocess.run(['python', './analyze.py', f'./test_contracts/{f}'], stdout=subprocess.PIPE).stdout.decode('utf-8').rstrip()
 
-        # Test passed 1
+        # Test passed
         if solutions[f] == result:
             print(f"\033[92mPASSED:\033[0m {f}")
             score += result == 'Safe'
             no_passed += 1
             pass
         else:
-            # Says Tainted, is Safe 0
+            # Says Tainted, is Safe
             if result == 'Tainted':
                 color = '\033[93m'
-            # Says Safe, is Tainted -2
+            # Says Safe, is Tainted
             else:
                 color = '\033[91m'
                 score -= 2
