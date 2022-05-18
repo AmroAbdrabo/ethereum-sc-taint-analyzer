@@ -176,12 +176,21 @@ unconditioned_block(blk) :- block(blk), !branch(_, _, blk, _, _, _). // !safe_gu
 unguarded_block(blk, args, sv) :- branch(_, _, blk, _, _, stmt), ssa_depens_complete(stmt, args, sv, 0, _).
 
 // ***************** argument transfer *****************
+.decl blockFollowsClosed(start: Blk, fin: Blk)
+blockFollowsClosed(start, fin) :- blockFollows(start, fin).
+blockFollowsClosed(start, fin) :- blockFollows(start, mid), blockFollowsClosed(mid, fin).
+
+
+.decl returnFromBlock(srcblk: Block, sinkblk: Block)
+returnFromBlock(start, fin) :- blockFollowsClosed(start, fin), return(_, fin).
+
 .decl arg_flow(arg: SSA, id_val: SSA, idx: number, block_from: Block, block_to: Block)
 arg_flow(arg, id_val, idx, block_from, block_to) :- transferArgument(transfer, id_val, idx), 
                                                     (
                                                       goto(transfer, block_from, block_to);
                                                       jump(transfer, block_from, block_to, _);
-                                                      (jump(transfer_orig, _, block_from, block_to), return(transfer, block_from)) // when the called function is done
+                                                      (jump(transfer_orig, _, block_from, block_to), return(transfer, block_from)); // when the called function is done
+                                                      (jump(transfer_orig, _, block_from, block_to), returnFromBlock(block_from, retblk), return(transfer, retblk))
                                                       // does not seem to be case that a branch transfers any arguments (tho I might be wrong)
                                                     ), argument(arg, block_to, idx).
 
@@ -315,7 +324,6 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, hs+1,
             (
                 !doesModify(to_blk), final_state = sv_tainted
             )
-
         ), 
         (
             (
@@ -430,7 +438,6 @@ program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, state, hs
 
 
 // ******************* START: FUNCTION EXECUTION FINISHED *******************
-
 
 .decl hasSelfDestruct(blk: Block)
 hasSelfDestruct(blk) :- statement(stmt), blockStmt(blk, stmt), selfdestruct(stmt, _).
