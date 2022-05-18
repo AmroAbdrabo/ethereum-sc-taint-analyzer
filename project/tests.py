@@ -53,6 +53,7 @@ def run_tests(arg):
         solutions = {arg+'.sol': solutions[arg+'.sol']}
 
     for f in solutions.keys():
+        
         result  = subprocess.run(['python', './analyze.py', f'./test_contracts/{f}'], stdout=subprocess.PIPE).stdout.decode('utf-8').rstrip()
 
         # Test passed
@@ -64,7 +65,7 @@ def run_tests(arg):
         else:
             # Says Tainted, is Safe
             if result == 'Tainted':
-                color = '\033[93m'
+                color = '\033[94m'
             # Says Safe, is Tainted
             else:
                 color = '\033[91m'

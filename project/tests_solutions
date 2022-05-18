@@ -16,7 +16,9 @@
 30.sol,True
 31.sol,False
 13.sol,False
-40.sol,False
+40.sol,True
+24.sol,False
+20.sol,False
 41.sol,True
 7.sol,True
 36.sol,True
@@ -25,13 +27,11 @@
 42.sol,True
 4.sol,True
 11.sol,False
-01.sol,False
+1.sol,True
 22.sol,False
 28.sol,False
 25.sol,True
-32.sol,True
-24.sol,False
-20.sol,False
+32.sol,False
 12-1.sol,True
 39.sol,False
 18.sol,False
