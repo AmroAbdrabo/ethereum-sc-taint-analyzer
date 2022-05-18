@@ -298,7 +298,7 @@ program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, state, hs
 
 
 // Handle state variable taint transfer (ungarded). New: checks first there is NO guard inside last_blk to know if we can still remain in unguarded state 
-program_run([executed_blks, to_blk], final_state, args_tainted, state_end, hs+1, stack, cat(prehist, to_blk)) :- 
+program_run([executed_blks, to_blk], final_state, args_tainted, state_end, hs+1, stack, prehist) :- 
         program_run(executed_blks, sv_tainted, args_tainted, state, hs, stack, prehist),
         executed_blks = [prev_exec, last_blk], blockFollows(last_blk, to_blk), !arg_setup_blk(to_blk), // NOT SURE if !arg_setup_blk() is really needed
         (
@@ -383,7 +383,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state, hs, new_s
             (
                 !doesModify(to_blk), final_state = sv_tainted
             )
-         ), currhist = cat(prehist, to_blk),
+         ), currhist = prehist,
          hs < 12.
 
 
@@ -408,7 +408,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state, hs+1, new
             (
                 !doesModify(to_blk), final_state = sv_tainted
             )
-         ), currhist = cat(prehist, to_blk),
+         ), currhist = prehist,
          hs < 12.
 
 // Jump argument transfer
@@ -431,6 +431,11 @@ program_run(executed_blks, sv_tainted, args_tainted bor new_arg_taint, state, hs
 
 // ******************* START: FUNCTION EXECUTION FINISHED *******************
 
+
+.decl hasSelfDestruct(blk: Block)
+hasSelfDestruct(blk) :- statement(stmt), blockStmt(blk, stmt), selfdestruct(stmt, _).
+
+
 // return to argument setup block (from normal return). NB: the arguments are reset as untainted
 program_run([executed_blks, to_blk], sv_tainted, 0, 0, hs+1, stack, currhist) :- 
     program_run(executed_blks, sv_tainted, args_tainted, state, hs, stack, prehist), 
@@ -438,15 +443,14 @@ program_run([executed_blks, to_blk], sv_tainted, 0, 0, hs+1, stack, currhist) :-
     (
         (arg_setup_blk(to_blk), state < 2);
         (
-            state = 2, 
+            state = 2, !hasSelfDestruct(last_blk),
             (
                 (first_mini_blk(parent, to_blk), function(parent, _));
                 (!longBlock(to_blk), function(to_blk, _))
             )
         )
     ), 
-    currhist = cat(prehist, cat("-argreset->",substr(to_blk, 3, strlen(to_blk)))),
-    //currhist = prehist,
+    currhist = prehist,
     hs < 12. 
 
 // return to argument setup block (from revert). NB: the arguments are reset as untainted
@@ -454,8 +458,7 @@ program_run([executed_blks, to_blk], 0, 0, 0, hs+1, nil, currhist) :-
     program_run(executed_blks, sv_tainted, args_tainted, state, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], revert(_, last_blk),
     arg_setup_blk(to_blk), 
-    currhist = cat(prehist, cat("-rev->",substr(to_blk, 3, strlen(to_blk)))),
-    //currhist = prehist,
+    currhist = prehist,
     state < 2,    
     hs < 12. 
 
@@ -468,8 +471,7 @@ program_run([executed_blks, to_blk], sv_tainted, 0, 2, hs+1, nil, currhist) :-
         (!longBlock(parent_blk), to_blk = parent_blk);
         (longBlock(parent_blk), !not_first_store(to_blk, _, parent_blk), store_block(to_blk, parent, _))
     ),
-    currhist = cat(prehist, cat("-up2p->", to_blk)),
-    //currhist = prehist,
+    currhist = prehist,
     state < 2,
     hs > 1, hs < 12. 
 

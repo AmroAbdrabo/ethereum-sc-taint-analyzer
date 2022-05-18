@@ -35,7 +35,7 @@ def create_solutions():
 
 
 def get_solutions():
-    with open('./tests_solutions', 'r') as file:
+    with open('./tests_solutions_no_long', 'r') as file:
         content = file.read().rstrip()
         conv = lambda b: 'Tainted' if b else 'Safe'
         vulnerable = {e[0]: conv(e[1]=='True') for e in [l.split(',') for l in content.split('\n')]}
