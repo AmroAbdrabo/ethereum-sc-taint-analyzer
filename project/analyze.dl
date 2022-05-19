@@ -339,7 +339,7 @@ program_run(executed_blks, sv_tainted, final_arg_state, state, idx, hs, stack, p
             (is_id_val_taint = 0, arg_bv(bv, arg), final_arg_state = args_tainted)  // 24.sol sometimes an argument needs to be cleaned b/c same function is called again with clean variable
         ),
         
-        hs < 12.
+        hs < 14.
 .output arg_flow
 .output num_args
 
@@ -385,7 +385,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, h
             )
         ),
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 12.
+        hs < 14.
 
 // Case 1: antiguarded unprivileged state
 program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, hs+1, stack, currhist) :- 
@@ -421,7 +421,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, h
             )
         ),
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 12.
+        hs < 14.
 
 // Case 2: privileged user (no antiguard)
 program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, hs+1, stack, currhist) :- 
@@ -464,7 +464,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, h
             )
         ),
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 12.
+        hs < 14.
 
 // Case 3: antiguarded privilege
 program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, hs+1, stack, currhist) :- 
@@ -502,12 +502,12 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, h
             )
         ),
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 12.
+        hs < 14.
 
 //  ******************* START: JUMP LOGIC  *******************
 // Handle jump arguments and stack (ungarded). Amro: removed the stack from here since it was being done in the JMP CTRL transfer below
 program_run(executed_blks, sv_tainted, final_arg_state, state, idx, hs, stack, prehist) :- 
-        program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, hs, stack, prehist), is_imp_tainted = state band 1,
+        program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, hs, stack, prehist),
         executed_blks = [prev_exec, last_blk], jump(_, last_blk, to_blk, cont_blk), idx = last_arg + 1,
         (
             (arg_flow(arg, id_val, idx, last_blk, to_blk), !longBlock(to_blk));
@@ -517,7 +517,9 @@ program_run(executed_blks, sv_tainted, final_arg_state, state, idx, hs, stack, p
         arg_taint_dep = args_val band args_tainted,
         sv_taint_dep = sv_val band sv_tainted,
         is_id_val_taint = (arg_taint_dep bor sv_taint_dep) bor sndr_val, // ARE WE PRIV'D USER: IF YES, THEN FOR PRECISION REMOVE SNDR_VAL
+        
         is_non_const = args_val bor sv_val bor sndr_val,
+        is_imp_tainted = state band 1,
         should_be_imp_tainted = is_imp_tainted band is_non_const,
         (
             (
@@ -556,7 +558,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state, -1, hs, n
                 !doesModify(to_blk), final_state = sv_tainted
             )
          ), currhist = cat(cat(prehist, "-J->"), to_blk),
-         hs < 12.
+         hs < 14.
 
 
 // Return ctrl transfer
@@ -584,7 +586,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state band -2, -
                 !doesModify(to_blk), final_state = sv_tainted
             )
          ), currhist = cat(cat(prehist, "-R->"), to_blk),
-         hs < 12.
+         hs < 14.
 
 // Return argument transfer
 // TODO: For Lukas, can u please set up implicit taint for return values (similar to how I did the jump see 509 transition) 
@@ -594,12 +596,23 @@ program_run(executed_blks, sv_tainted, final_arg_state, state, idx, hs, stack, p
         ((longBlock(possible_parent_blk), first_mini_blk(possible_parent_blk, to_blk));(!longBlock(possible_parent_blk), to_blk = possible_parent_blk))
         ,arg_flow(arg, id_val, idx, last_blk, to_blk),
         idx = last_arg+1 ,ssa_depens_complete(id_val, args_val, sv_val, sndr_val, cnt_val),
+        
         arg_taint_dep = args_val band args_tainted,
         sv_taint_dep = sv_val band sv_tainted,
-        is_id_val_taint = (arg_taint_dep bor sv_taint_dep) bor sndr_val,
+        is_id_val_taint = (arg_taint_dep bor sv_taint_dep) bor sndr_val,        
+        
+        is_non_const = args_val bor sv_val,
+        is_imp_tainted = state band 1,
+        should_be_imp_tainted = is_imp_tainted band is_non_const,
         (
-            (is_id_val_taint != 0, arg_bv(bv, arg), final_arg_state = bv bor args_tainted);
-            (is_id_val_taint = 0, arg_bv(bv, arg), final_arg_state = args_tainted)
+            (
+                should_be_imp_tainted != 0, arg_bv(bv, arg), final_arg_state = bv bor args_tainted
+            );
+            (   
+                should_be_imp_tainted = 0,
+                (is_id_val_taint != 0, arg_bv(bv, arg), final_arg_state = bv bor args_tainted);
+                (is_id_val_taint = 0, arg_bv(bv, arg), final_arg_state = args_tainted)
+            )
         ).
 
 
@@ -627,7 +640,7 @@ program_run([executed_blks, to_blk], sv_tainted, 0, 0, -1, hs+1, stack, currhist
         )
     ), 
     currhist = cat(cat(prehist, "=>"), to_blk),
-    hs < 12. 
+    hs < 14. 
 
 // return to argument setup block (from revert). NB: the arguments are reset as untainted
 program_run([executed_blks, to_blk], 0, 0, 0, -1, hs+1, nil, currhist) :- 
@@ -636,7 +649,7 @@ program_run([executed_blks, to_blk], 0, 0, 0, -1, hs+1, nil, currhist) :-
     arg_setup_blk(to_blk), 
     currhist = cat(cat(prehist, "=>"), to_blk),
     state < 2,    
-    hs < 12. 
+    hs < 14. 
 
 // return to privileged user from unprivileged user return (privileged user does not introduce user input taint -> no need for arg_setup_blk)
 program_run([executed_blks, to_blk], sv_tainted, 0, 2, -1, hs+1, nil, currhist) :- 
@@ -649,14 +662,14 @@ program_run([executed_blks, to_blk], sv_tainted, 0, 2, -1, hs+1, nil, currhist) 
     ),
     currhist = cat(cat(prehist, "=>"), to_blk),
     state < 2,
-    hs > 1, hs < 12. 
+    hs > 1, hs < 14. 
 
 // setup arguments inside argument setup block
 program_run(executed_blks, sv_tainted, args_tainted bor arg_taint, 0, idx, hs, stack, prehist) :- 
     program_run(executed_blks, sv_tainted, args_tainted, 0, last_arg, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], arg_setup_blk(last_blk),  // if you append new history here, this rule will run forever and program will crash
     argument(id, substr(last_blk, 3, strlen(last_blk)),idx), idx=last_arg+1, arg_bv(arg_taint, id),  // no need to worry about the case where there is no arguments 
-    hs < 12. 
+    hs < 14. 
 
 // ******************* END: FUNCTION EXECUTION FINISHED *******************
 
@@ -677,7 +690,7 @@ tainted_sinks(id), debug_info(executed_blks, sv_tainted, args_tainted, state, la
                     is_tainted != 0.
 
 //.output debug_info
-.output program_run
+//.output program_run
 .output tainted_sinks
 //.output blockFollows
 //.output arg_setup_blk
