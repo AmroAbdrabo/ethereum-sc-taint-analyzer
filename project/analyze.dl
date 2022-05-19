@@ -150,7 +150,7 @@ sv_bv(s, field) :- s = 2^k, k = to_number(substr(field, 1, strlen(field))), stor
 
 .type BlkList = [next: BlkList, blk: Block]
 
-// Context of store in a block // B00, S02, 066, 066, 1
+// Context of store in a block // B00, S02, 06, 06, 1
 .decl block_modifies_sv(blk: Block, sv: Name, state_dependency: number, arg_dependency: number, sndr: number)
 block_modifies_sv(blk, field, state_dep, arg_dep, sndr_dep) :- store(stmt, field, assigned), !longBlock(blk),
   blockStmt(blk, stmt), ssa_depens_complete(assigned, arg_dep, state_dep, sndr_dep, _). 
@@ -192,7 +192,16 @@ arg_flow(arg, id_val, idx, block_from, block_to) :- transferArgument(transfer, i
                                                       (jump(transfer_orig, _, block_from, block_to), return(transfer, block_from)); // when the called function is done
                                                       (jump(transfer_orig, _, block_from, block_to), returnFromBlock(block_from, retblk), return(transfer, retblk))
                                                       // does not seem to be case that a branch transfers any arguments (tho I might be wrong)
-                                                    ), argument(arg, block_to, idx).
+                                                    ), argument(arg, block_to, idx), !longBlock(block_to).
+
+arg_flow(arg, id_val, idx, block_from, block_to) :- transferArgument(transfer, id_val, idx), 
+                                                    (
+                                                      goto(transfer, block_from, parent);
+                                                      jump(transfer, block_from, parent, _);
+                                                      (jump(transfer_orig, _, block_from, parent), return(transfer, block_from)); // when the called function is done
+                                                      (jump(transfer_orig, _, block_from, parent), returnFromBlock(block_from, retblk), return(transfer, retblk))
+                                                      // does not seem to be case that a branch transfers any arguments (tho I might be wrong)
+                                                    ), argument(arg, block_to, idx), first_mini_blk(parent, block_to), longBlock(parent).
 
 .decl num_args_interim(block_from: Block, block_to: Block, order: number, cnt: number)
 num_args_interim(block_from, block_to, idx, 1) :- arg_flow(_, _, idx, block_from, block_to). // Souffle's cancerous witness problem prevents using a simple count functor
@@ -214,7 +223,7 @@ num_args_interim(block_from, block_to, idx, 1) :- arg_setup_blk(block_from),
             possible_parent = substr(block_from, 3, strlen(block_from)), 
             argument(arg, possible_parent, idx).
 
-num_args_interim(block_from, block_to, idx, cnt+1) :- num_args_interim(block_from, block_to, last, cnt), idx =last+1, 
+num_args_interim(block_from, block_to, idx, cnt+1) :- num_args_interim(block_from, block_to, last, cnt), idx =last+1, arg_setup_blk(block_from),
     ((!longBlock(possible_parent), block_to = possible_parent);(first_mini_blk(possible_parent, block_to))), 
             possible_parent = substr(block_from, 3, strlen(block_from)), 
             argument(arg, possible_parent, idx).

@@ -8,21 +8,24 @@ contract Contract {
   address c;
 
   function set1(address x) public {
-    set2(x);
+    //set2(x);
+    a=x;
   }
 
-  function set2(address x) public {
+  /*function set2(address x) public {
     set3(x);
-  }
+    a = x;
+    b = x;
+  }*/
 
-  function set3(address x) public {
+  /*function set3(address x) public {
     set4(x);
   }
 
   function set4(address x) public {
     a = x;
     b = x;
-  }
+  }*/
 
   function foo(address x) public {
     set1(x);
