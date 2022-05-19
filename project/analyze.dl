@@ -194,6 +194,17 @@ arg_flow(arg, id_val, idx, block_from, block_to) :- transferArgument(transfer, i
                                                       // does not seem to be case that a branch transfers any arguments (tho I might be wrong)
                                                     ), argument(arg, block_to, idx).
 
+.decl num_args_interim(block_from: Block, block_to: Block, order: number, cnt: number)
+num_args_interim(block_from, block_to, idx, 1) :- arg_flow(_, _, idx, block_from, block_to). // Souffle's cancerous witness problem prevents using a simple count functor
+
+// unique way to construct num_args, namely by adding new arguments only in immediately consecutive order
+num_args_interim(block_from, block_to, next_idx, cnt+1) :- num_args_interim(block_from, block_to, idx, cnt), arg_flow(_, _, next_idx, block_from, block_to), next_idx = idx+1.
+
+.decl num_args_non_final(block_from: Block, block_to: Block, order: number, cnt: number)
+num_args_non_final(block_from, block_to, order, cnt) :- num_args_interim(block_from, block_to, order, cnt), num_args_interim(block_from, block_to, order2, cnt2), cnt < cnt2.  
+
+.decl num_args(block_from: Block, block_to: Block, cnt: number)
+num_args(block_from, block_to, cnt) :- num_args_interim(block_from, block_to, idx, cnt), !num_args_non_final(block_from, block_to, idx, cnt).
 
 // ***************** end: argument transfer *****************
 .decl longBlock(longblk: Block)
