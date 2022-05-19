@@ -113,7 +113,7 @@ user_input(id, id) :- argument(id,_,_).
 user_input(id, arg) :- assign(id, orig), user_input(orig, arg).
 user_input(id, arg) :- uop(id, orig, _), user_input(orig, arg).
 
-// Given that arguments are used only once we can treat similarly to fields. A01 -> 009, A00 -> 0001, A02 
+// Given that arguments are used only once we can treat similarly to fields. A01 -> 0010, A00 -> 0001, A02 
 .decl arg_bv(state: number, id_arg: SSA)
 arg_bv(s, id) :- s = 2^k, k = to_number(substr(id, 1, strlen(id))), argument(id, _, _).
 
@@ -150,7 +150,7 @@ sv_bv(s, field) :- s = 2^k, k = to_number(substr(field, 1, strlen(field))), stor
 
 .type BlkList = [next: BlkList, blk: Block]
 
-// Context of store in a block // B00, S02, 09, 09, 1
+// Context of store in a block // B00, S02, 010, 010, 1
 .decl block_modifies_sv(blk: Block, sv: Name, state_dependency: number, arg_dependency: number, sndr: number)
 block_modifies_sv(blk, field, state_dep, arg_dep, sndr_dep) :- store(stmt, field, assigned), !longBlock(blk),
   blockStmt(blk, stmt), ssa_depens_complete(assigned, arg_dep, state_dep, sndr_dep, _). 
@@ -163,7 +163,7 @@ block_modifies_sv(blk, field, state_dep, arg_dep, sndr_dep) :- store(stmt, field
 // (Potentially) safe condition with dependency on state variables
 safe_condition(stmt, sv, arg) :- ssa_depens_complete(stmt, arg, sv, 1, _). 
 
-// TODO: take into account argument transfers (see example 9)  
+// TODO: take into account argument transfers (see example 12)  
 .decl safe_guarded_block(blk: Block, state_dependency: number, arg_dependency: number)
 safe_guarded_block(blk, state_dependency, arg_dependency) :- safe_condition(stmt, state_dependency, arg_dependency), branch(_,_, blk,_,_, stmt).// blockStmt(blk,stmt). block with safe guard condition need not have the var_cond defined inside the block (example: T0:: A02)
 
@@ -291,7 +291,7 @@ arg_setup_blk(blk), block(blk) :- blk = cat(con_blk, f_blk), function(con_blk, "
 blockFollows(conblk, setup_blk) :- arg_setup_blk(setup_blk), fblk = substr(setup_blk, 3, strlen(setup_blk)), function(conblk, "Constructor").
 blockFollows(setup_blk, fblk) :-  arg_setup_blk(setup_blk), !longBlock(fblk), fblk = substr(setup_blk, 3, strlen(setup_blk)).
 blockFollows(setup_blk, sblk) :-  arg_setup_blk(setup_blk), longBlock(fblk), fblk = substr(setup_blk, 3, strlen(setup_blk)), store_block(sblk, fblk, _), !not_first_store(sblk, _, fblk).
-.output blockFollows
+//.output blockFollows
 
 
 // At the end of execution of executed_blks, sv_state determines the state variables which are tainted (have bit set to one),
@@ -309,7 +309,7 @@ hasArg(blk) :- argument(_, blk, _).
 doesModify(blk) :- block_modifies_sv(blk, _, _, _, _). 
 // State 0: unguarded
 // State 1: antiguarded
-// State 2: privileged user (has untainted user input, but can act as a confused deputy-- see 14.sol)
+// State 2: privileged user (has untainted user input, but can act as a confused deputy-- see 12.sol)
 // State 4: found tainted sink in execution trace
 
 // *********************** START: Normal ctrl flow (i.e. any ctrl flow other than JMP) *************************
@@ -337,7 +337,7 @@ program_run(executed_blks, sv_tainted, final_arg_state, state, idx, hs, stack, p
             (is_id_val_taint = 0, arg_bv(bv, arg), final_arg_state = args_tainted)  // 24.sol sometimes an argument needs to be cleaned b/c same function is called again with clean variable
         ),
         
-        hs < 9.
+        hs < 12.
 
 .output num_args
 // Handle state variable taint transfer (ungarded). New: checks first there is NO guard inside last_blk to know if we can still remain in unguarded state 
@@ -391,7 +391,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, h
             ); (state = 2, state_end = 2)
         ),
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 9.
+        hs < 12.
 
 //  ******************* START: JUMP LOGIC  *******************
 // Handle jump arguments and stack (ungarded). Amro: removed the stack from here since it was being done in the JMP CTRL transfer below
@@ -437,7 +437,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state, -1, hs, n
                 !doesModify(to_blk), final_state = sv_tainted
             )
          ), currhist = cat(cat(prehist, "-J->"), to_blk),
-         hs < 9.
+         hs < 12.
 
 
 // Return ctrl transfer
@@ -465,11 +465,11 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state, -1, hs+1,
                 !doesModify(to_blk), final_state = sv_tainted
             )
          ), currhist = cat(cat(prehist, "-R->"), to_blk),
-         hs < 9.
+         hs < 12.
 
 // Return argument transfer
 program_run(executed_blks, sv_tainted, final_arg_state, state, idx, hs, stack, prehist) :- 
-        program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, hs, stack, prehist),   // 0009   clean it --> 00001 but this DOES NOT MEAN 0009 is gone
+        program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, hs, stack, prehist),   // 00010   clean it --> 00001 but this DOES NOT MEAN 00010 is gone
         executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = [prev_stack, possible_parent_blk], 
         ((longBlock(possible_parent_blk), first_mini_blk(possible_parent_blk, to_blk));(!longBlock(possible_parent_blk), to_blk = possible_parent_blk))
         ,arg_flow(arg, id_val, idx, last_blk, to_blk),
@@ -507,7 +507,7 @@ program_run([executed_blks, to_blk], sv_tainted, 0, 0, -1, hs+1, stack, currhist
         )
     ), 
     currhist = cat(cat(prehist, "=>"), to_blk),
-    hs < 9. 
+    hs < 12. 
 
 // return to argument setup block (from revert). NB: the arguments are reset as untainted
 program_run([executed_blks, to_blk], 0, 0, 0, -1, hs+1, nil, currhist) :- 
@@ -516,7 +516,7 @@ program_run([executed_blks, to_blk], 0, 0, 0, -1, hs+1, nil, currhist) :-
     arg_setup_blk(to_blk), 
     currhist = cat(cat(prehist, "=>"), to_blk),
     state < 2,    
-    hs < 9. 
+    hs < 12. 
 
 // return to privileged user from unprivileged user return (privileged user does not introduce user input taint -> no need for arg_setup_blk)
 program_run([executed_blks, to_blk], sv_tainted, 0, 2, -1, hs+1, nil, currhist) :- 
@@ -529,14 +529,14 @@ program_run([executed_blks, to_blk], sv_tainted, 0, 2, -1, hs+1, nil, currhist) 
     ),
     currhist = cat(cat(prehist, "=>"), to_blk),
     state < 2,
-    hs > 1, hs < 9. 
+    hs > 1, hs < 12. 
 
 // setup arguments inside argument setup block
 program_run(executed_blks, sv_tainted, args_tainted bor arg_taint, 0, idx, hs, stack, prehist) :- 
     program_run(executed_blks, sv_tainted, args_tainted, 0, last_arg, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], arg_setup_blk(last_blk),  // if you append new history here, this rule will run forever and program will crash
     argument(id, substr(last_blk, 3, strlen(last_blk)),idx), idx=last_arg+1, arg_bv(arg_taint, id),  // no need to worry about the case where there is no arguments 
-    hs < 9. 
+    hs < 12. 
 
 // ******************* END: FUNCTION EXECUTION FINISHED *******************
 
@@ -556,11 +556,11 @@ tainted_sinks(id), debug_info(executed_blks, sv_tainted, args_tainted, state, la
                     ),
                     is_tainted != 0.
 
-.output debug_info
-.output program_run
+//.output debug_info
+//.output program_run
 .output tainted_sinks
-.output blockFollows
-.output arg_setup_blk
+//.output blockFollows
+//.output arg_setup_blk
 /*.output blockDominates
 .output blockFollows
 .output blockFollowsTransitive
