@@ -10,6 +10,7 @@ contract Contract {
   function set1(address x) public {
     //set2(x);
     a=x;
+    b=x;
   }
 
   /*function set2(address x) public {
