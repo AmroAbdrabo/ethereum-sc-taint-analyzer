@@ -12,11 +12,11 @@ contract Contract {
     unsafe_int = i;
   }
 
-  function set1(int i, address payable x) public {
+  /*function set1(int i, address payable x) public {
     if (i > 5) {
       set2(x);
     }
-  }
+  }*/
 
   function set2(address payable x) public {
     set3(x, 2);
@@ -32,7 +32,7 @@ contract Contract {
   }
 
   function foo(address payable x) public {
-    set1(6, x);
+    //set1(6, x);
     require(msg.sender == b); // guard
     set3(x, unsafe_int);
     // x is trusted but b implicitly depends on untrusted unsafe_int
