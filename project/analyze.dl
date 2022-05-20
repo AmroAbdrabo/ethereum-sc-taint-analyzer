@@ -332,9 +332,10 @@ program_run(executed_blks, sv_tainted, final_arg_state, state, idx, hs, stack, p
         ssa_depens_complete(id_val, args_val, sv_val, sndr_val, cnt_val), 
         // NEW: if you look at the graph of twelve-one.sol A01 is tainted b/c depended impl. on tainted value
         // The reason twelve-one.sol was passing thus far, was b/c our state machine treated the argument A01 as tainted for a reason I still need to figure out
+        // If we are transferring a value from an antiguarded state, we propagate the taint on the argument we are transferring
         arg_taint_dep = args_val band args_tainted,
         sv_taint_dep = sv_val band sv_tainted,
-        is_id_val_taint = (arg_taint_dep bor sv_taint_dep) bor sndr_val,
+        is_id_val_taint = (arg_taint_dep bor sv_taint_dep) bor sndr_val bor (state band 1),
         (
             (is_id_val_taint != 0, arg_bv(bv, arg), final_arg_state = bv bor args_tainted);
             (is_id_val_taint = 0, arg_bv(bv, arg), final_arg_state = args_tainted)  // 24.sol sometimes an argument needs to be cleaned b/c same function is called again with clean variable
