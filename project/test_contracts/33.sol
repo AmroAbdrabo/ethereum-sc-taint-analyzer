@@ -15,7 +15,7 @@ contract Contract {
   function set_rec(int i, address x) public {
     if (i >= 5) {
       a = x;
-    } else if (i <= -5 && unsafe_int > 1) {
+    } else if (i <= -5 || unsafe_int > 1) {
       require(msg.sender == c);
       b = x;
     } else {

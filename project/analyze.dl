@@ -397,10 +397,10 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, h
         (
             (
                 block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),        
-                    is_non_const = arg_dep bor sndr_dep bor state_dep, // only tainted if non-constant
+                    is_non_const_sv = arg_dep bor sndr_dep bor state_dep, // only tainted if non-constant
                     (
-                        (is_non_const != 0, sv_bv(bv, field), final_state = bv bor sv_tainted);
-                        (is_non_const = 0, sv_bv(bv, field), final_state = (bnot bv) band sv_tainted)
+                        (is_non_const_sv != 0, sv_bv(bv, field), final_state = bv bor sv_tainted);
+                        (is_non_const_sv = 0, sv_bv(bv, field), final_state = (bnot bv) band sv_tainted)
                     )
             );
             (
@@ -466,6 +466,8 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, h
         currhist = cat(cat(prehist, ","), to_blk),
         hs < 14.
 
+.output block_modifies_sv
+.output safe_guarded_block
 // Case 3: antiguarded privilege
 program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, hs+1, stack, currhist) :- 
         program_run(executed_blks, sv_tainted, args_tainted, 3, last_arg, hs, stack, prehist), (
@@ -475,35 +477,22 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, h
         executed_blks = [prev_exec, last_blk], blockFollows(last_blk, to_blk), !arg_setup_blk(to_blk), // NOT SURE if !arg_setup_blk() is really needed
         (
             (
-                block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),        
-                    arg_taint_dep = arg_dep band args_tainted,
-                    sv_taint_dep = state_dep band sv_tainted,
-                    is_sv_val_taint = arg_taint_dep bor sv_taint_dep, // we made the unsure decision to treat msg.sender as a safe value  
-                    (
-                        (is_sv_val_taint != 0, sv_bv(bv, field), final_state = bv bor sv_tainted);
-                        (is_sv_val_taint = 0, sv_bv(bv, field), final_state = (bnot bv) band sv_tainted)
-                    )
+                block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),  
+                is_non_const = arg_dep bor sndr_dep bor state_dep, // only tainted if non-constant
+                (
+                    (is_non_const != 0, sv_bv(bv, field), final_state = bv bor sv_tainted);
+                    (is_non_const = 0, sv_bv(bv, field), final_state = (bnot bv) band sv_tainted)
+                )      
             );
             (
                 !doesModify(to_blk), final_state = sv_tainted
             )
         ), 
-        (
-
-            (unconditioned_block(last_blk), state_end = 3);
-            (
-                safe_guarded_block(last_blk, guard_sv_dep, guard_arg_dep), 
-                is_non_const = guard_arg_dep bor guard_sv_dep,
-                ((is_non_const != 0, state_end = 3);(is_non_const = 0, state_end = 2)) // If the guard depends on const, we go to the privileged normal state 2, o/w we continue in the antiguarded privileged state
-            );
-            (
-                unguarded_block(last_blk, args_dep, sv_dep),
-                state_end = 3
-            )
-        ),
+        state_end = 3,
         currhist = cat(cat(prehist, ","), to_blk),
         hs < 14.
 
+.output blockFollows
 //  ******************* START: JUMP LOGIC  *******************
 // Handle jump arguments and stack (ungarded). Amro: removed the stack from here since it was being done in the JMP CTRL transfer below
 program_run(executed_blks, sv_tainted, final_arg_state, state, idx, hs, stack, prehist) :- 
@@ -527,8 +516,8 @@ program_run(executed_blks, sv_tainted, final_arg_state, state, idx, hs, stack, p
             );
             (
                 should_be_imp_tainted = 0,
-                (is_id_val_taint != 0, arg_bv(bv, arg), final_arg_state = bv bor args_tainted);
-                (is_id_val_taint = 0, arg_bv(bv, arg), final_arg_state = ((bnot bv) band args_tainted))  // 24.sol sometimes an argument needs to be cleaned b/c same function is called again with clean variable
+                ((is_id_val_taint != 0, arg_bv(bv, arg), final_arg_state = bv bor args_tainted);
+                (is_id_val_taint = 0, arg_bv(bv, arg), final_arg_state = ((bnot bv) band args_tainted)))  // 24.sol sometimes an argument needs to be cleaned b/c same function is called again with clean variable
             )
         ).
 
@@ -589,7 +578,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state band -2, -
          hs < 14.
 
 // Return argument transfer
-// TODO: For Lukas, can u please set up implicit taint for return values (similar to how I did the jump see 509 transition) 
+// TODO (done): For Lukas, can u please set up implicit taint for return values (similar to how I did the jump see 509 transition) 
 program_run(executed_blks, sv_tainted, final_arg_state, state, idx, hs, stack, prehist) :- 
         program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, hs, stack, prehist),   // 00012   clean it --> 00001 but this DOES NOT MEAN 00012 is gone
         executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = [prev_stack, possible_parent_blk], 
@@ -610,8 +599,8 @@ program_run(executed_blks, sv_tainted, final_arg_state, state, idx, hs, stack, p
             );
             (   
                 should_be_imp_tainted = 0,
-                (is_id_val_taint != 0, arg_bv(bv, arg), final_arg_state = bv bor args_tainted);
-                (is_id_val_taint = 0, arg_bv(bv, arg), final_arg_state = args_tainted)
+                ((is_id_val_taint != 0, arg_bv(bv, arg), final_arg_state = bv bor args_tainted);
+                (is_id_val_taint = 0, arg_bv(bv, arg), final_arg_state = args_tainted))
             )
         ).
 
@@ -690,7 +679,7 @@ tainted_sinks(id), debug_info(executed_blks, sv_tainted, args_tainted, state, la
                     is_tainted != 0.
 
 //.output debug_info
-//.output program_run
+.output program_run
 .output tainted_sinks
 //.output blockFollows
 //.output arg_setup_blk
