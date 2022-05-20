@@ -625,7 +625,7 @@ program_run([executed_blks, to_blk], sv_tainted, 0, 0, -1, hs+1, stack, currhist
     (
         (arg_setup_blk(to_blk), state < 2); // only go the block which sets up user taint if we are not the admin user
         (
-            state = 2, !hasSelfDestruct(last_blk),
+            (state = 2;state=3), !hasSelfDestruct(last_blk),
             (
                 (first_mini_blk(parent, to_blk), function(parent, _));
                 (!longBlock(to_blk), function(to_blk, _))
