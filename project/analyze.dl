@@ -159,21 +159,24 @@ block_modifies_sv(blk, field, state_dep, arg_dep, sndr_dep) :- store(stmt, field
 
 // We consider a (later guard) condition to be safe if it does not depend on user provided arguments. However, we keep
 // track of which state variables and which arguments it depends on.
-.decl safe_condition(stmt: SSA, state_dependency: number, arg_dependency: number)  
+.decl safe_condition(stmt: SSA, state_dependency: number, arg_dependency: number, sndr_dep : number)  
+
 // (Potentially) safe condition with dependency on state variables
-safe_condition(stmt, sv, arg) :- ssa_depens_complete(stmt, arg, sv, 1, _). 
+// sndr_dep being 0 means that the safe condition can potentially be safe if one of the arguments depends on sndr (and other values it depends on are clean)
+// sndr_dep being 1 means that the safe condition explicitly depends on msg.sender via an S-type SSA.
+safe_condition(stmt, sv, arg, sndr_dep) :- ssa_depens_complete(stmt, arg, sv, sndr_dep, _).
 
 // TODO: take into account argument transfers (see example 14)  
-.decl safe_guarded_block(blk: Block, state_dependency: number, arg_dependency: number)
-safe_guarded_block(blk, state_dependency, arg_dependency) :- safe_condition(stmt, state_dependency, arg_dependency), branch(_,_, blk,_,_, stmt).// blockStmt(blk,stmt). block with safe guard condition need not have the var_cond defined inside the block (example: T0:: A02)
+.decl safe_guarded_block(blk: Block, state_dependency: number, arg_dependency: number, sndr_dep: number)
+safe_guarded_block(blk, state_dependency, arg_dependency, sndr_dep) :- safe_condition(stmt, state_dependency, arg_dependency, sndr_dep), branch(_,_, blk,_,_, stmt).// blockStmt(blk,stmt). block with safe guard condition need not have the var_cond defined inside the block (example: T0:: A02)
 
 .decl unconditioned_block(blk: Block)
 // Captures blocks which are not guarded (as in those that do have a condition that does NOT depend on msg.sender, and also those that do not have a condition alas)
 unconditioned_block(blk) :- block(blk), !branch(_, _, blk, _, _, _). // !safe_guarded_block(blk, _, _). // NB: a block can also be "unguarded" if some of its dependencies become tainted
 
 // Conditioned but not guarded (i.e. has branch which has no dependence on msg.sender)
-.decl unguarded_block(blk: Block, args: number, sv: number)
-unguarded_block(blk, args, sv) :- branch(_, _, blk, _, _, stmt), ssa_depens_complete(stmt, args, sv, 0, _).
+//.decl unguarded_block(blk: Block, args: number, sv: number)
+//unguarded_block(blk, args, sv) :- branch(_, _, blk, _, _, stmt), ssa_depens_complete(stmt, args, sv, 0, _).
 
 // ***************** argument transfer *****************
 .decl blockFollowsClosed(start: Block, fin: Block)
@@ -298,9 +301,9 @@ blockFollows(setup_blk, sblk) :-  arg_setup_blk(setup_blk), longBlock(fblk), fbl
 // At the end of execution of executed_blks, sv_state determines the state variables which are tainted (have bit set to one),
 // arg_state determines the arguments which are tainted (have bit set to one), guarded determines whether it is guarded (by the end of execution of executed_blks)
 // string hist is B00B01
-.decl program_run(executed_blks: BlkList, sv_state: number, arg_state: number, guarded: number, arg_stack: number, hist_size: number, stack: BlkList, string_hist: symbol) // final state after executing blklist
+.decl program_run(executed_blks: BlkList, sv_state: number, arg_state: number, guarded: number, arg_stack: number, args_sndr: number, hist_size: number, stack: BlkList, string_hist: symbol) // final state after executing blklist
 // base case
-program_run([nil, constructor_block], 0, 0, 0, -1, 1, nil, "C") :- function(constructor_block, "Constructor").
+program_run([nil, constructor_block], 0, 0, 0, -1, 0, 1, nil, "C") :- function(constructor_block, "Constructor").
 
 //.output arg_flow
 .decl hasArg(blk: Block)
@@ -317,16 +320,16 @@ doesModify(blk) :- block_modifies_sv(blk, _, _, _, _).
 // *********************** START: Normal ctrl flow (i.e. any ctrl flow other than JMP) *************************
 
 // If we are currently at the argument setup block (for user defined input)  -- removed tainting new record's arguments, see the bottom-most rule
-program_run([executed_blks, to_blk], sv_taint, args_tainted, 0, -1, hs+1, stack, currhist) :-  
-        program_run(executed_blks, sv_taint, args_tainted, 0, -1, hs, stack, prehist),
+program_run([executed_blks, to_blk], sv_taint, args_tainted, 0, -1, args_sndr, hs+1, stack, currhist) :-  
+        program_run(executed_blks, sv_taint, args_tainted, 0, -1, args_sndr, hs, stack, prehist),
         blockFollows(last_exec_blk, to_blk), arg_setup_blk(to_blk), // guaranteed to be following from constructor (only where we can reach arg_setup_blk is via constructor) 
         executed_blks = [ancient_list, last_exec_blk],
         //currhist = cat(prehist, cat("->",substr(to_blk, 3, strlen(to_blk)))).
         currhist = cat(cat(prehist, ","), to_blk).
 
 // Handle argument taint transfer (ungarded)
-program_run(executed_blks, sv_tainted, final_arg_state, state, idx, hs, stack, prehist) :- 
-        program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, hs, stack, prehist),
+program_run(executed_blks, sv_tainted, final_arg_state, state, idx, final_args_sndr, hs, stack, prehist) :- 
+        program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, hs, stack, prehist),
         executed_blks = [prev_exec, last_blk], blockFollows(last_blk, to_blk),
         arg_flow(arg, id_val, idx, last_blk, to_blk), idx = last_arg+1, // push arguments in increasing order
         ssa_depens_complete(id_val, args_val, sv_val, sndr_val, cnt_val), 
@@ -335,12 +338,16 @@ program_run(executed_blks, sv_tainted, final_arg_state, state, idx, hs, stack, p
         // If we are transferring a value from an antiguarded state, we propagate the taint on the argument we are transferring
         arg_taint_dep = args_val band args_tainted,
         sv_taint_dep = sv_val band sv_tainted,
-        is_id_val_taint = (arg_taint_dep bor sv_taint_dep) bor sndr_val bor (state band 1),
+        non_sndr_taint = arg_taint_dep bor sv_taint_dep bor (state band 1),
+        is_id_val_taint = non_sndr_taint bor sndr_val,
         (
             (is_id_val_taint != 0, arg_bv(bv, arg), final_arg_state = bv bor args_tainted);
-            (is_id_val_taint = 0, arg_bv(bv, arg), final_arg_state = args_tainted)  // 24.sol sometimes an argument needs to be cleaned b/c same function is called again with clean variable
+            (is_id_val_taint = 0, arg_bv(bv, arg), final_arg_state = (bnot bv) band args_tainted)  // 24.sol sometimes an argument needs to be cleaned b/c same function is called again with clean variable
         ),
-        
+        (
+            (non_sndr_taint = 0, sndr_val = 1,  arg_bv(bv, arg), final_args_sndr = bv bor args_sndr); // if the only taint comes from the sndr, then include it in the bit vector
+            (non_sndr_taint != 0,  arg_bv(bv, arg), final_args_sndr = (bnot bv) band args_sndr) // o/w remove it
+        ),
         hs < 14.
 //.output arg_flow
 //.output num_args
@@ -348,8 +355,8 @@ program_run(executed_blks, sv_tainted, final_arg_state, state, idx, hs, stack, p
 // Handle state variable taint transfer (ungarded). New: checks first there is NO guard inside last_blk to know if we can still remain in unguarded state 
 
 // Case 0: unguarded non-privileged user
-program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, hs+1, stack, currhist) :- 
-        program_run(executed_blks, sv_tainted, args_tainted, 0, last_arg, hs, stack, prehist), (
+program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, args_sndr, hs+1, stack, currhist) :- 
+        program_run(executed_blks, sv_tainted, args_tainted, 0, last_arg, args_sndr, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
         ),
@@ -372,26 +379,44 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, h
         (
             (unconditioned_block(last_blk), state_end = 0);
             (   
-                safe_guarded_block(last_blk, guard_sv_dep, guard_arg_dep), 
-                has_arg_dep = guard_arg_dep band args_tainted, 
-                has_sv_dep =  guard_sv_dep band sv_tainted,
-                is_tainted = has_arg_dep bor has_sv_dep,
-                is_tainted != 0, state_end = 1
-            );
-            (
-                unguarded_block(last_blk, args_dep, sv_dep),
-                has_arg_dep = args_dep band args_tainted, 
-                has_sv_dep =  sv_dep band sv_tainted,
-                is_tainted = has_arg_dep bor has_sv_dep,
-                ((is_tainted = 0, state_end = 0);(is_tainted != 0, state_end = 1))
+                safe_guarded_block(last_blk, guard_sv_dep, guard_arg_dep, sndr_dep),
+                (
+                    args_tainted_cond = guard_arg_dep band args_tainted, 
+                    sv_tainted_cond   =  guard_sv_dep band sv_tainted,
+                    is_tainted = (args_tainted_cond band (bnot args_sndr)) bor sv_tainted_cond, // For conditionals, we examine taint coming only from non-sndr sources? 
+                    (
+                        ( 
+                            sndr_dep = 1, is_tainted != 0, state_end = 1 // If yes, then next state is antiguarded (o/w the next state can only be accessed by priv'd user since it is guarded)
+                        );
+                        (
+                            sndr_dep = 0, // there is no EXPLICIT dependency, but could there be an implicit one?
+                            depends_on_sndr = args_sndr band guard_arg_dep,   // depends_on_sndr is non zero if there are arguments which are tainted by sndr (only) and are referenced by the condition
+                            (
+                                (
+                                    depends_on_sndr = 0,  // no dependency on arguments which are tainted by sndr only --> this cannot be a guard
+                                    // OK, not a guard, but could there be a taint in the condition?
+                                    (
+                                        (is_tainted = 0, state_end = 0); // no taint then continue onto normal unguarded state 
+                                        (is_tainted != 0, state_end = 1) // o/w continue to antiguarded state
+                                    )
+                                );
+                                (
+                                    depends_on_sndr != 0,  // There is a dependency on arguments which are tainted by sndr only --> this can possibly be a guard
+                                    // Could there be a non-sndr taint in the condition?
+                                    is_tainted != 0, state_end = 1 // If there is taint, then next state is antiguarded (o/w the next state can only be accessed by priv'd user since it is guarded)      
+                                )
+                            )
+                        )
+                    )
+                )
             )
         ),
         currhist = cat(cat(prehist, ","), to_blk),
         hs < 14.
 
 // Case 1: antiguarded unprivileged state
-program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, hs+1, stack, currhist) :- 
-        program_run(executed_blks, sv_tainted, args_tainted, 1, last_arg, hs, stack, prehist), (
+program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, args_sndr, hs+1, stack, currhist) :- 
+        program_run(executed_blks, sv_tainted, args_tainted, 1, last_arg, args_sndr, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
         ),
@@ -411,25 +436,42 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, h
         ), 
         (
             (unconditioned_block(last_blk), state_end = 1);
-            (
-                // According to thirty-five.sol this is not correct, ctrl flow passes thru a guard (from twelve.sol and twevel-1.sol we see that inside the tainted if statement clean values remain clean until they get transferred out of the if statement)
-                safe_guarded_block(last_blk, guard_sv_dep, guard_arg_dep), 
-                has_arg_dep = guard_arg_dep band args_tainted, 
-                has_sv_dep =  guard_sv_dep band sv_tainted,
-                is_tainted = has_arg_dep bor has_sv_dep,
-                is_tainted != 0, state_end = 1
-            );
-            (
-                unguarded_block(last_blk, args_dep, sv_dep),
-                state_end = 1
+            (   
+                safe_guarded_block(last_blk, guard_sv_dep, guard_arg_dep, sndr_dep),
+                (
+                    args_tainted_cond = guard_arg_dep band args_tainted, 
+                    sv_tainted_cond   =  guard_sv_dep band sv_tainted,
+                    is_tainted = (args_tainted_cond band (bnot args_sndr)) bor sv_tainted_cond, // For conditionals, we examine taint coming only from non-sndr sources? 
+                    (
+                        ( 
+                            sndr_dep = 1, is_tainted != 0, state_end = 1 // If yes, then next state is antiguarded (o/w the next state can only be accessed by priv'd user since it is guarded)
+                        );
+                        (
+                            sndr_dep = 0, // there is no EXPLICIT dependency, but could there be an implicit one?
+                            depends_on_sndr = args_sndr band guard_arg_dep,   // depends_on_sndr is non zero if there are arguments which are tainted by sndr (only) and are referenced by the condition
+                            (
+                                (
+                                    depends_on_sndr = 0,  // no dependency on arguments which are tainted by sndr only --> this cannot be a guard
+                                    // Not a guard --> we remain in antiguarded unprivleged state
+                                    state_end = 1
+                                );
+                                (
+                                    depends_on_sndr != 0,  // There is a dependency on arguments which are tainted by sndr only --> this can possibly be a guard
+                                    // Could there be a non-sndr taint in the condition?
+                                    is_tainted != 0, state_end = 1 // If there is taint, then next state is antiguarded (o/w the next state can only be accessed by priv'd user since it is guarded)      
+                                )
+                            )
+                        )
+                    )
+                )
             )
         ),
         currhist = cat(cat(prehist, ","), to_blk),
         hs < 14.
 
 // Case 2: privileged user (no antiguard)
-program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, hs+1, stack, currhist) :- 
-        program_run(executed_blks, sv_tainted, args_tainted, 2, last_arg, hs, stack, prehist), (
+program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, args_sndr, hs+1, stack, currhist) :- 
+        program_run(executed_blks, sv_tainted, args_tainted, 2, last_arg, args_sndr, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
         ),
@@ -450,21 +492,41 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, h
             )
         ), 
         (
-
             (unconditioned_block(last_blk), state_end = 2);
-            (
-                safe_guarded_block(last_blk, guard_sv_dep, guard_arg_dep), 
-                has_arg_dep = guard_arg_dep band args_tainted, 
-                has_sv_dep =  guard_sv_dep band sv_tainted,
-                is_tainted = has_arg_dep bor has_sv_dep,
-                ((is_tainted != 0, state_end = 3);(is_tainted = 0, state_end = 2)) // if the guard is tainted we go to anitguarded privilege state, o/w we remain in priv'd state
-            );
-            (
-                unguarded_block(last_blk, args_dep, sv_dep),
-                has_arg_dep = args_dep band args_tainted, 
-                has_sv_dep =  sv_dep band sv_tainted,
-                is_tainted = has_arg_dep bor has_sv_dep,
-                ((is_tainted = 0, state_end = 2);(is_tainted != 0, state_end = 3))
+            (   
+                safe_guarded_block(last_blk, guard_sv_dep, guard_arg_dep, sndr_dep),
+                (
+                    args_tainted_cond = guard_arg_dep band args_tainted, 
+                    sv_tainted_cond   =  guard_sv_dep band sv_tainted,
+                    is_tainted = (args_tainted_cond band (bnot args_sndr)) bor sv_tainted_cond, // For conditionals, we examine taint coming only from non-sndr sources? 
+                    (
+                        ( 
+                            sndr_dep = 1, 
+                            ((is_tainted != 0, state_end = 3); // If yes, then next state is antiguarded 
+                            (is_tainted =0 , state_end = 2)) // (o/w continue in privileged state)
+                        );
+                        (
+                            sndr_dep = 0, // there is no EXPLICIT dependency, but could there be an implicit one?
+                            depends_on_sndr = args_sndr band guard_arg_dep,   // depends_on_sndr is non zero if there are arguments which are tainted by sndr (only) and are referenced by the condition
+                            (
+                                (
+                                    depends_on_sndr = 0,  // no dependency on arguments which are tainted by sndr only --> this cannot be a guard
+                                    // OK, not a guard, but could there be a taint in the condition?
+                                    (
+                                        (is_tainted = 0, state_end = 2); // no taint then continue onto privileged (unguarded) state 
+                                        (is_tainted != 0, state_end = 3) // o/w continue to antiguarded state
+                                    )
+                                );
+                                (
+                                    depends_on_sndr != 0,  // There is a dependency on arguments which are tainted by sndr only --> this can possibly be a guard
+                                    // Could there be a non-sndr taint in the condition?
+                                    ((is_tainted != 0, state_end = 3); // If there is taint, then next state is antiguarded      
+                                    (is_tainted = 0, state_end = 2)) // o/w the next state is privileged (guarded)
+                                )
+                            )
+                        )
+                    )
+                )
             )
         ),
         currhist = cat(cat(prehist, ","), to_blk),
@@ -473,8 +535,8 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, h
 //.output block_modifies_sv
 //.output safe_guarded_block
 // Case 3: antiguarded privilege
-program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, hs+1, stack, currhist) :- 
-        program_run(executed_blks, sv_tainted, args_tainted, 3, last_arg, hs, stack, prehist), (
+program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, args_sndr, hs+1, stack, currhist) :- 
+        program_run(executed_blks, sv_tainted, args_tainted, 3, last_arg, args_sndr, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
         ),
@@ -499,8 +561,8 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, h
 //.output blockFollows
 //  ******************* START: JUMP LOGIC  *******************
 // Handle jump arguments and stack (ungarded). Amro: removed the stack from here since it was being done in the JMP CTRL transfer below
-program_run(executed_blks, sv_tainted, final_arg_state, state, idx, hs, stack, prehist) :- 
-        program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, hs, stack, prehist),
+program_run(executed_blks, sv_tainted, final_arg_state, state, idx, args_sndr, hs, stack, prehist) :- 
+        program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, hs, stack, prehist),
         executed_blks = [prev_exec, last_blk], jump(_, last_blk, to_blk, cont_blk), idx = last_arg + 1,
         (
             (arg_flow(arg, id_val, idx, last_blk, to_blk), !longBlock(to_blk));
@@ -527,8 +589,8 @@ program_run(executed_blks, sv_tainted, final_arg_state, state, idx, hs, stack, p
 
 
 // Jump ctrl transfer (longBlock logic to be done later)
-program_run([executed_blks, to_blk], final_state, args_tainted, state, -1, hs, new_stack, currhist) :-   
-         program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, hs, stack, prehist), (
+program_run([executed_blks, to_blk], final_state, args_tainted, state, -1, args_sndr, hs, new_stack, currhist) :-   
+         program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _) // either the block we're flowing into does not take arguments or the block we're flowing out of does not provide arguments
         ),
@@ -555,8 +617,8 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state, -1, hs, n
 
 
 // Return ctrl transfer
-program_run([executed_blks, to_blk], final_state, args_tainted, state band -2, -1, hs+1, new_stack, currhist) :-  // remove implicit flag by banding by -2
-         program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, hs, stack, prehist), (
+program_run([executed_blks, to_blk], final_state, args_tainted, state band -2, -1, args_sndr, hs+1, new_stack, currhist) :-  // remove implicit flag by banding by -2
+         program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
         ),
@@ -583,8 +645,8 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state band -2, -
 
 // Return argument transfer
 // TODO (done): For Lukas, can u please set up implicit taint for return values (similar to how I did the jump see 509 transition) 
-program_run(executed_blks, sv_tainted, final_arg_state, state, idx, hs, stack, prehist) :- 
-        program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, hs, stack, prehist),   // 00010   clean it --> 00001 but this DOES NOT MEAN 00010 is gone
+program_run(executed_blks, sv_tainted, final_arg_state, state, idx, args_sndr, hs, stack, prehist) :- 
+        program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, hs, stack, prehist),   // 00010   clean it --> 00001 but this DOES NOT MEAN 00010 is gone
         executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = [prev_stack, possible_parent_blk], 
         ((longBlock(possible_parent_blk), first_mini_blk(possible_parent_blk, to_blk));(!longBlock(possible_parent_blk), to_blk = possible_parent_blk))
         ,arg_flow(arg, id_val, idx, last_blk, to_blk),
@@ -619,8 +681,8 @@ hasSelfDestruct(blk) :- statement(stmt), blockStmt(blk, stmt), selfdestruct(stmt
 
 
 // return to argument setup block (from normal return). NB: the arguments are reset as untainted
-program_run([executed_blks, to_blk], sv_tainted, 0, 0, -1, hs+1, stack, currhist) :- 
-    program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, hs, stack, prehist), 
+program_run([executed_blks, to_blk], sv_tainted, 0, 0, -1, args_sndr, hs+1, stack, currhist) :- 
+    program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = nil,
     (
         (arg_setup_blk(to_blk), state < 2); // only go the block which sets up user taint if we are not the admin user
@@ -636,8 +698,8 @@ program_run([executed_blks, to_blk], sv_tainted, 0, 0, -1, hs+1, stack, currhist
     hs < 14. 
 
 // return to argument setup block (from revert). NB: the arguments are reset as untainted
-program_run([executed_blks, to_blk], 0, 0, 0, -1, hs+1, nil, currhist) :- 
-    program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, hs, stack, prehist), 
+program_run([executed_blks, to_blk], 0, 0, 0, -1, args_sndr, hs+1, nil, currhist) :- 
+    program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], revert(_, last_blk),
     arg_setup_blk(to_blk), 
     currhist = cat(cat(prehist, "=>"), to_blk),
@@ -645,8 +707,8 @@ program_run([executed_blks, to_blk], 0, 0, 0, -1, hs+1, nil, currhist) :-
     hs < 14. 
 
 // return to privileged user from unprivileged user return (privileged user does not introduce user input taint -> no need for arg_setup_blk)
-program_run([executed_blks, to_blk], sv_tainted, 0, 2, -1, hs+1, nil, currhist) :- 
-    program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, hs, stack, prehist), 
+program_run([executed_blks, to_blk], sv_tainted, 0, 2, -1, args_sndr, hs+1, nil, currhist) :- 
+    program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = nil,
     function(parent_blk, x), x != "Constructor",  
     (
@@ -658,8 +720,8 @@ program_run([executed_blks, to_blk], sv_tainted, 0, 2, -1, hs+1, nil, currhist) 
     hs > 1, hs < 14. 
 
 // setup arguments inside argument setup block
-program_run(executed_blks, sv_tainted, args_tainted bor arg_taint, 0, idx, hs, stack, prehist) :- 
-    program_run(executed_blks, sv_tainted, args_tainted, 0, last_arg, hs, stack, prehist), 
+program_run(executed_blks, sv_tainted, args_tainted bor arg_taint, 0, idx, args_sndr, hs, stack, prehist) :- 
+    program_run(executed_blks, sv_tainted, args_tainted, 0, last_arg, args_sndr, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], arg_setup_blk(last_blk),  // if you append new history here, this rule will run forever and program will crash
     argument(id, substr(last_blk, 3, strlen(last_blk)),idx), idx=last_arg+1, arg_bv(arg_taint, id),  // no need to worry about the case where there is no arguments 
     hs < 14. 
@@ -673,7 +735,7 @@ program_run(executed_blks, sv_tainted, args_tainted bor arg_taint, 0, idx, hs, s
 
 
 // TODO: check also for state 3 (privileged but antiguarded)
-tainted_sinks(id), debug_info(executed_blks, sv_tainted, args_tainted, state, la, hs,stack, hist) :-selfdestruct(id, addr), program_run(executed_blks, sv_tainted, args_tainted, state, la, hs,stack, hist), blockStmt(last_blk, id),
+tainted_sinks(id), debug_info(executed_blks, sv_tainted, args_tainted, state, la, hs,stack, hist) :-selfdestruct(id, addr), program_run(executed_blks, sv_tainted, args_tainted, state, la, args_sndr, hs,stack, hist), blockStmt(last_blk, id),
                     executed_blks = [prev_blks, last_blk], ssa_depens_complete(addr, args_dep, sv_dep, sndr, cnt), 
                     has_tainted_arg = args_dep band args_tainted, has_tainted_sv = sv_dep band sv_tainted, 
                     (
