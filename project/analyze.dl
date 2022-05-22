@@ -312,8 +312,8 @@ hasArg(blk) :- argument(_, blk, _).
 doesModify(blk) :- block_modifies_sv(blk, _, _, _, _). 
 // State 0: unguarded -  00
 // State 1: antiguarded - 01
-// State 2: privileged user (has untainted user input, but can act as a confused deputy-- see 14.sol) - 14
-// State 3: privileged user running in antiguarded state (i.e. first bit determines whether we are in anti-guarded state or not. - 14
+// State 2: privileged user (has untainted user input, but can act as a confused deputy-- see 9.sol) - 9
+// State 3: privileged user running in antiguarded state (i.e. first bit determines whether we are in anti-guarded state or not. - 9
 // Make sure to remove anti-guarded state on return (i.e. branch dependency finishes) 
 
 // *********************** START: Normal ctrl flow (i.e. any ctrl flow other than JMP) *************************
@@ -347,7 +347,7 @@ program_run(executed_blks, sv_tainted, final_arg_state, state, idx, final_args_s
             (non_sndr_taint = 0, sndr_val = 1,  arg_bv(bv, arg), final_args_sndr = bv bor args_sndr); // if the only taint comes from the sndr, then include it in the bit vector
             (non_sndr_taint != 0,  arg_bv(bv, arg), final_args_sndr = (bnot bv) band args_sndr) // o/w remove it
         ),
-        hs < 14.
+        hs < 9.
 //.output arg_flow
 //.output num_args
 
@@ -378,17 +378,17 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
         (
             (unconditioned_block(last_blk), state_end = 0);
             (   
-                safe_guarded_block(last_blk, guard_sv_dep, guard_arg_dep, sndr_dep),
+                safe_guarded_block(last_blk, guard_sv_dep, guard_arg_dep, guard_sndr_dep),
                 (
                     args_tainted_cond = guard_arg_dep band args_tainted, 
                     sv_tainted_cond   =  guard_sv_dep band sv_tainted,
                     is_tainted = (args_tainted_cond band (bnot args_sndr)) bor sv_tainted_cond, // For conditionals, we examine taint coming only from non-sndr sources? 
                     (
                         ( 
-                            sndr_dep = 1, is_tainted != 0, state_end = 1 // If yes, then next state is antiguarded (o/w the next state can only be accessed by priv'd user since it is guarded)
+                            guard_sndr_dep = 1, is_tainted != 0, state_end = 1 // If yes, then next state is antiguarded (o/w the next state can only be accessed by priv'd user since it is guarded)
                         );
                         (
-                            sndr_dep = 0, // there is no EXPLICIT dependency, but could there be an implicit one?
+                            guard_sndr_dep = 0, // there is no EXPLICIT dependency, but could there be an implicit one?
                             depends_on_sndr = args_sndr band guard_arg_dep,   // depends_on_sndr is non zero if there are arguments which are tainted by sndr (only) and are referenced by the condition
                             (
                                 (
@@ -411,7 +411,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
             )
         ),
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 14.
+        hs < 9.
 
 // Case 1: antiguarded unprivileged state
 program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, args_sndr, hs+1, stack, currhist) :- 
@@ -436,17 +436,17 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
         (
             (unconditioned_block(last_blk), state_end = 1);
             (   
-                safe_guarded_block(last_blk, guard_sv_dep, guard_arg_dep, sndr_dep),
+                safe_guarded_block(last_blk, guard_sv_dep, guard_arg_dep, guard_sndr_dep),
                 (
                     args_tainted_cond = guard_arg_dep band args_tainted, 
                     sv_tainted_cond   =  guard_sv_dep band sv_tainted,
                     is_tainted = (args_tainted_cond band (bnot args_sndr)) bor sv_tainted_cond, // For conditionals, we examine taint coming only from non-sndr sources? 
                     (
                         ( 
-                            sndr_dep = 1, is_tainted != 0, state_end = 1 // If yes, then next state is antiguarded (o/w the next state can only be accessed by priv'd user since it is guarded)
+                            guard_sndr_dep = 1, is_tainted != 0, state_end = 1 // If yes, then next state is antiguarded (o/w the next state can only be accessed by priv'd user since it is guarded)
                         );
                         (
-                            sndr_dep = 0, // there is no EXPLICIT dependency, but could there be an implicit one?
+                            guard_sndr_dep = 0, // there is no EXPLICIT dependency, but could there be an implicit one?
                             depends_on_sndr = args_sndr band guard_arg_dep,   // depends_on_sndr is non zero if there are arguments which are tainted by sndr (only) and are referenced by the condition
                             (
                                 (
@@ -466,7 +466,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
             )
         ),
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 14.
+        hs < 9.
 
 // Case 2: privileged user (no antiguard)
 program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, args_sndr, hs+1, stack, currhist) :- 
@@ -493,19 +493,19 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
         (
             (unconditioned_block(last_blk), state_end = 2);
             (   
-                safe_guarded_block(last_blk, guard_sv_dep, guard_arg_dep, sndr_dep),
+                safe_guarded_block(last_blk, guard_sv_dep, guard_arg_dep, guard_sndr_dep),
                 (
                     args_tainted_cond = guard_arg_dep band args_tainted, 
                     sv_tainted_cond   =  guard_sv_dep band sv_tainted,
                     is_tainted = (args_tainted_cond band (bnot args_sndr)) bor sv_tainted_cond, // For conditionals, we examine taint coming only from non-sndr sources? 
                     (
                         ( 
-                            sndr_dep = 1, 
+                            guard_sndr_dep = 1, 
                             ((is_tainted != 0, state_end = 3); // If yes, then next state is antiguarded 
                             (is_tainted =0 , state_end = 2)) // (o/w continue in privileged state)
                         );
                         (
-                            sndr_dep = 0, // there is no EXPLICIT dependency, but could there be an implicit one?
+                            guard_sndr_dep = 0, // there is no EXPLICIT dependency, but could there be an implicit one?
                             depends_on_sndr = args_sndr band guard_arg_dep,   // depends_on_sndr is non zero if there are arguments which are tainted by sndr (only) and are referenced by the condition
                             (
                                 (
@@ -529,7 +529,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
             )
         ),
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 14.
+        hs < 9.
 
 //.output block_modifies_sv
 //.output safe_guarded_block
@@ -555,7 +555,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
         ), 
         state_end = 3,
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 14.
+        hs < 9.
 
 //.output blockFollows
 //  ******************* START: JUMP LOGIC  *******************
@@ -609,7 +609,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state, -1, args_
                 !doesModify(to_blk), final_state = sv_tainted
             )
          ), currhist = cat(cat(prehist, "-J->"), to_blk),
-         hs < 14.
+         hs < 9.
 
 
 // Return ctrl transfer (I think if we jump inside an implicitly tainted if-scope and then return we should still have antiguarded bit active, o/w if it's a return 
@@ -638,7 +638,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state band -2, -
                 !doesModify(to_blk), final_state = sv_tainted
             )
          ), currhist = cat(cat(prehist, "-R->"), to_blk),
-         hs < 14.
+         hs < 9.
 
 // Return argument transfer
 // TODO (done): For Lukas, can u please set up implicit taint for return values (similar to how I did the jump see 509 transition) 
@@ -688,7 +688,7 @@ program_run([executed_blks, to_blk], sv_tainted, 0, 0, -1, 0, hs+1, stack, currh
         )
     ), 
     currhist = cat(cat(prehist, "=>"), to_blk),
-    hs < 14. 
+    hs < 9. 
 
 // return to argument setup block (from revert). NB: the arguments are reset as untainted
 program_run([executed_blks, to_blk], 0, 0, 0, -1, 0, hs+1, nil, currhist) :- 
@@ -697,7 +697,7 @@ program_run([executed_blks, to_blk], 0, 0, 0, -1, 0, hs+1, nil, currhist) :-
     arg_setup_blk(to_blk), 
     currhist = cat(cat(prehist, "=>"), to_blk),
     state < 2,    
-    hs < 14. 
+    hs < 9. 
 
 // return to privileged user from unprivileged user return (privileged user does not introduce user input taint -> no need for arg_setup_blk)
 program_run([executed_blks, to_blk], sv_tainted, 0, 2, -1, 0, hs+1, nil, currhist) :- 
@@ -710,14 +710,14 @@ program_run([executed_blks, to_blk], sv_tainted, 0, 2, -1, 0, hs+1, nil, currhis
     ),
     currhist = cat(cat(prehist, "=>"), to_blk),
     state < 2,
-    hs > 1, hs < 14. 
+    hs > 1, hs < 9. 
 
 // setup arguments inside argument setup block
 program_run(executed_blks, sv_tainted, args_tainted bor arg_taint, 0, idx, args_sndr, hs, stack, prehist) :- 
     program_run(executed_blks, sv_tainted, args_tainted, 0, last_arg, args_sndr, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], arg_setup_blk(last_blk),  // if you append new history here, this rule will run forever and program will crash
     argument(id, substr(last_blk, 3, strlen(last_blk)),idx), idx=last_arg+1, arg_bv(arg_taint, id),  // no need to worry about the case where there is no arguments 
-    hs < 14. 
+    hs < 9. 
 
 // ******************* END: FUNCTION EXECUTION FINISHED *******************
 
@@ -738,10 +738,11 @@ tainted_sinks(id), debug_info(executed_blks, sv_tainted, args_tainted, state, la
                     is_tainted != 0.
 
 //.output debug_info
-//.output program_run
+.output program_run
 .output tainted_sinks
-//.output blockFollows
-//.output arg_setup_blk
+.output blockFollows
+.output arg_setup_blk
+.output safe_guarded_block
 /*.output blockDominates
 .output blockFollows
 .output hasGuardSSA
