@@ -337,7 +337,7 @@ program_run(executed_blks, sv_tainted, final_arg_state, state, idx, final_args_s
         // If we are transferring a value from an antiguarded state, we propagate the taint on the argument we are transferring
         arg_taint_dep = args_val band args_tainted,
         sv_taint_dep = sv_val band sv_tainted,
-        non_sndr_taint = arg_taint_dep bor sv_taint_dep bor (state band 1),
+        non_sndr_taint = arg_taint_dep bor sv_taint_dep bor (state band 1),  // according to twelve--one.sol implicit taint holds even if the argument is a const
         is_id_val_taint = non_sndr_taint bor sndr_val,
         (
             (is_id_val_taint != 0, arg_bv(bv, arg), final_arg_state = bv bor args_tainted);
@@ -560,7 +560,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
 //.output blockFollows
 //  ******************* START: JUMP LOGIC  *******************
 // Handle jump arguments and stack (ungarded). Amro: removed the stack from here since it was being done in the JMP CTRL transfer below
-program_run(executed_blks, sv_tainted, final_arg_state, state, idx, args_sndr, hs, stack, prehist) :- 
+program_run(executed_blks, sv_tainted, final_arg_state, state, idx, final_args_sndr, hs, stack, prehist) :- 
         program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, hs, stack, prehist),
         executed_blks = [prev_exec, last_blk], jump(_, last_blk, to_blk, cont_blk), idx = last_arg + 1,
         (
@@ -569,21 +569,18 @@ program_run(executed_blks, sv_tainted, final_arg_state, state, idx, args_sndr, h
         ), 
         ssa_depens_complete(id_val, args_val, sv_val, sndr_val, cnt_val),
         arg_taint_dep = args_val band args_tainted,
-        sv_taint_dep = sv_val band sv_tainted,
-        is_id_val_taint = (arg_taint_dep bor sv_taint_dep) bor sndr_val, // ARE WE PRIV'D USER: IF YES, THEN FOR PRECISION REMOVE SNDR_VAL
-        
+        sv_taint_dep = sv_val band sv_tainted,  // ARE WE PRIV'D USER: IF YES, THEN FOR PRECISION REMOVE SNDR_VAL AS A TAINT
         is_non_const = args_val bor sv_val bor sndr_val,
-        is_imp_tainted = state band 1,
-        should_be_imp_tainted = is_imp_tainted band is_non_const,
+        is_imp_tainted = 0x7fffffff*(state band 1),
+        non_sndr_taint = arg_taint_dep bor sv_taint_dep bor (is_imp_tainted band is_non_const), // since we remain here inside the context of the if statement, consts are still clean (see twelve)
+        is_id_val_taint = non_sndr_taint bor sndr_val,
         (
-            (
-                should_be_imp_tainted != 0, arg_bv(bv, arg), final_arg_state = bv bor args_tainted
-            );
-            (
-                should_be_imp_tainted = 0,
-                ((is_id_val_taint != 0, arg_bv(bv, arg), final_arg_state = bv bor args_tainted);
-                (is_id_val_taint = 0, arg_bv(bv, arg), final_arg_state = ((bnot bv) band args_tainted)))  // 24.sol sometimes an argument needs to be cleaned b/c same function is called again with clean variable
-            )
+            (is_id_val_taint != 0, arg_bv(bv, arg), final_arg_state = bv bor args_tainted);
+            (is_id_val_taint = 0, arg_bv(bv, arg), final_arg_state = (bnot bv) band args_tainted)  // 24.sol sometimes an argument needs to be cleaned b/c same function is called again with clean variable
+        ),
+        (
+            (non_sndr_taint = 0, sndr_val = 1,  arg_bv(bv, arg), final_args_sndr = bv bor args_sndr); // if the only taint comes from the sndr, then include it in the bit vector
+            (non_sndr_taint != 0,  arg_bv(bv, arg), final_args_sndr = (bnot bv) band args_sndr) // o/w remove it
         ).
 
 
@@ -615,7 +612,8 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state, -1, args_
          hs < 14.
 
 
-// Return ctrl transfer
+// Return ctrl transfer (I think if we jump inside an implicitly tainted if-scope and then return we should still have antiguarded bit active, o/w if it's a return 
+// that redirects control flow to user, then it should be set to 0
 program_run([executed_blks, to_blk], final_state, args_tainted, state band -2, -1, args_sndr, hs+1, new_stack, currhist) :-  // remove implicit flag by banding by -2
          program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
@@ -644,29 +642,25 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state band -2, -
 
 // Return argument transfer
 // TODO (done): For Lukas, can u please set up implicit taint for return values (similar to how I did the jump see 509 transition) 
-program_run(executed_blks, sv_tainted, final_arg_state, state, idx, args_sndr, hs, stack, prehist) :- 
+program_run(executed_blks, sv_tainted, final_arg_state, state, idx, final_args_sndr, hs, stack, prehist) :- 
         program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, hs, stack, prehist),   // 00010   clean it --> 00001 but this DOES NOT MEAN 00010 is gone
         executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = [prev_stack, possible_parent_blk], 
-        ((longBlock(possible_parent_blk), first_mini_blk(possible_parent_blk, to_blk));(!longBlock(possible_parent_blk), to_blk = possible_parent_blk))
-        ,arg_flow(arg, id_val, idx, last_blk, to_blk),
+        ((longBlock(possible_parent_blk), first_mini_blk(possible_parent_blk, to_blk));(!longBlock(possible_parent_blk), to_blk = possible_parent_blk)),
+        arg_flow(arg, id_val, idx, last_blk, to_blk),
         idx = last_arg+1 ,ssa_depens_complete(id_val, args_val, sv_val, sndr_val, cnt_val),
-        
         arg_taint_dep = args_val band args_tainted,
-        sv_taint_dep = sv_val band sv_tainted,
-        is_id_val_taint = (arg_taint_dep bor sv_taint_dep) bor sndr_val,        
-        
-        is_non_const = args_val bor sv_val,
-        is_imp_tainted = state band 1,
-        should_be_imp_tainted = is_imp_tainted band is_non_const,
+        sv_taint_dep = sv_val band sv_tainted,  // ARE WE PRIV'D USER: IF YES, THEN FOR PRECISION REMOVE SNDR_VAL AS A TAINT
+        is_non_const = args_val bor sv_val bor sndr_val,
+        is_imp_tainted = 0x7fffffff*(state band 1),
+        non_sndr_taint = arg_taint_dep bor sv_taint_dep bor (is_imp_tainted band is_non_const), // since we remain here inside the context of the if statement, consts are still clean (see twelve)
+        is_id_val_taint = non_sndr_taint bor sndr_val,
         (
-            (
-                should_be_imp_tainted != 0, arg_bv(bv, arg), final_arg_state = bv bor args_tainted
-            );
-            (   
-                should_be_imp_tainted = 0,
-                ((is_id_val_taint != 0, arg_bv(bv, arg), final_arg_state = bv bor args_tainted);
-                (is_id_val_taint = 0, arg_bv(bv, arg), final_arg_state = args_tainted))
-            )
+            (is_id_val_taint != 0, arg_bv(bv, arg), final_arg_state = bv bor args_tainted);
+            (is_id_val_taint = 0, arg_bv(bv, arg), final_arg_state = (bnot bv) band args_tainted)  // 24.sol sometimes an argument needs to be cleaned b/c same function is called again with clean variable
+        ),
+        (
+            (non_sndr_taint = 0, sndr_val = 1,  arg_bv(bv, arg), final_args_sndr = bv bor args_sndr); // if the only taint comes from the sndr, then include it in the bit vector
+            (non_sndr_taint != 0,  arg_bv(bv, arg), final_args_sndr = (bnot bv) band args_sndr) // o/w remove it
         ).
 
 
@@ -680,7 +674,7 @@ hasSelfDestruct(blk) :- statement(stmt), blockStmt(blk, stmt), selfdestruct(stmt
 
 
 // return to argument setup block (from normal return). NB: the arguments are reset as untainted
-program_run([executed_blks, to_blk], sv_tainted, 0, 0, -1, args_sndr, hs+1, stack, currhist) :- 
+program_run([executed_blks, to_blk], sv_tainted, 0, 0, -1, 0, hs+1, stack, currhist) :- 
     program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = nil,
     (
@@ -697,7 +691,7 @@ program_run([executed_blks, to_blk], sv_tainted, 0, 0, -1, args_sndr, hs+1, stac
     hs < 14. 
 
 // return to argument setup block (from revert). NB: the arguments are reset as untainted
-program_run([executed_blks, to_blk], 0, 0, 0, -1, args_sndr, hs+1, nil, currhist) :- 
+program_run([executed_blks, to_blk], 0, 0, 0, -1, 0, hs+1, nil, currhist) :- 
     program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], revert(_, last_blk),
     arg_setup_blk(to_blk), 
@@ -706,7 +700,7 @@ program_run([executed_blks, to_blk], 0, 0, 0, -1, args_sndr, hs+1, nil, currhist
     hs < 14. 
 
 // return to privileged user from unprivileged user return (privileged user does not introduce user input taint -> no need for arg_setup_blk)
-program_run([executed_blks, to_blk], sv_tainted, 0, 2, -1, args_sndr, hs+1, nil, currhist) :- 
+program_run([executed_blks, to_blk], sv_tainted, 0, 2, -1, 0, hs+1, nil, currhist) :- 
     program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = nil,
     function(parent_blk, x), x != "Constructor",  
