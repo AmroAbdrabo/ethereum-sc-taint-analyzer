@@ -185,7 +185,13 @@ blockFollowsClosed(start, fin) :- blockFollows(start, mid), blockFollowsClosed(m
 
 .decl returnFromBlock(srcblk: Block, sinkblk: Block)
 returnFromBlock(start, fin) :- blockFollowsClosed(start, fin), return(_, fin).
-//.output returnFromBlock
+// Imagine the chain B00-J->B01...-R->B02 encoded as jump(_, B00, B01, B02)  then B02-J->B03..-R->B04 and then finally B04 returns to the function which called B00 
+// in this case, returnFromBlock should have the pair B00, B04. Here is how to do this transitively
+
+// Base case
+returnFromBlock(start, fin) :- jump(_, start,_,fin), return(_, fin).
+// Recurse
+returnFromBlock(start, fin) :- jump(_, start,_,cont), returnFromBlock(cont, fin).
 
 .decl arg_flow(arg: SSA, id_val: SSA, idx: number, block_from: Block, block_to: Block)
 arg_flow(arg, id_val, idx, block_from, block_to) :- transferArgument(transfer, id_val, idx), 
@@ -202,7 +208,7 @@ arg_flow(arg, id_val, idx, block_from, block_to) :- transferArgument(transfer, i
                                                       goto(transfer, block_from, parent);
                                                       jump(transfer, block_from, parent, _);
                                                       (jump(transfer_orig, _, block_from, parent), return(transfer, block_from)); // when the called function is done
-                                                      (jump(transfer_orig, _, block_from, parent), returnFromBlock(block_from, retblk), return(transfer, retblk))
+                                                      (jump(transfer_orig, _, block_from_upstream, parent), returnFromBlock(block_from_upstream, block_from), return(transfer, block_from))
                                                       // does not seem to be case that a branch transfers any arguments (tho I might be wrong)
                                                     ), argument(arg, parent, idx), first_mini_blk(parent, block_to), longBlock(parent).
 
@@ -237,7 +243,6 @@ longBlock(blk) :- store(id1, _, _), blockStmt(blk, id1), store(id2, _, _), block
 
 .decl first_mini_blk(longblk: Block, entrypoint: Block)
 first_mini_blk(longblk, entrypoint) :- longBlock(longblk), !not_first_store(entrypoint, _, longblk), store_block(entrypoint, longblk, _). 
-
 
 .decl store_block_follows(from_stmt: number, to_stmt: number, parent: Block)
 store_block_follows(from, to, parent) :- store_block(_, parent, from), store_block(_, parent, to), from < to.
@@ -312,8 +317,8 @@ hasArg(blk) :- argument(_, blk, _).
 doesModify(blk) :- block_modifies_sv(blk, _, _, _, _). 
 // State 0: unguarded -  00
 // State 1: antiguarded - 01
-// State 2: privileged user (has untainted user input, but can act as a confused deputy-- see 12.sol) - 12
-// State 3: privileged user running in antiguarded state (i.e. first bit determines whether we are in anti-guarded state or not. - 12
+// State 2: privileged user (has untainted user input, but can act as a confused deputy-- see 7.sol) - 7
+// State 3: privileged user running in antiguarded state (i.e. first bit determines whether we are in anti-guarded state or not. - 7
 // Make sure to remove anti-guarded state on return (i.e. branch dependency finishes) 
 
 // *********************** START: Normal ctrl flow (i.e. any ctrl flow other than JMP) *************************
@@ -347,7 +352,7 @@ program_run(executed_blks, sv_tainted, final_arg_state, state, idx, final_args_s
             (non_sndr_taint = 0, sndr_val = 1,  arg_bv(bv, arg), final_args_sndr = bv bor args_sndr); // if the only taint comes from the sndr, then include it in the bit vector
             ((non_sndr_taint != 0; sndr_val=0) ,  arg_bv(bv, arg), final_args_sndr = (bnot bv) band args_sndr) // o/w remove it
         ),
-        hs < 12.
+        hs < 7.
 //.output arg_flow
 //.output num_args
 
@@ -411,7 +416,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
             )
         ),
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 12.
+        hs < 7.
 
 // Case 1: antiguarded unprivileged state
 program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, args_sndr, hs+1, stack, currhist) :- 
@@ -466,7 +471,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
             )
         ),
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 12.
+        hs < 7.
 
 // Case 2: privileged user (no antiguard)
 program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, args_sndr, hs+1, stack, currhist) :- 
@@ -529,7 +534,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
             )
         ),
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 12.
+        hs < 7.
 
 //.output block_modifies_sv
 //.output conditioned_block
@@ -555,7 +560,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
         ), 
         state_end = 3,
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 12.
+        hs < 7.
 
 //.output blockFollows
 //  ******************* START: JUMP LOGIC  *******************
@@ -609,7 +614,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state, -1, args_
                 !doesModify(to_blk), final_state = sv_tainted
             )
          ), currhist = cat(cat(prehist, "-J->"), to_blk),
-         hs < 12.
+         hs < 7.
 
 
 // Return ctrl transfer (I think if we jump inside an implicitly tainted if-scope and then return we should still have antiguarded bit active, o/w if it's a return 
@@ -638,10 +643,10 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state band -2, -
                 !doesModify(to_blk), final_state = sv_tainted
             )
          ), currhist = cat(cat(prehist, "-R->"), to_blk),
-         hs < 12.
+         hs < 7.
 
 // Return argument transfer
-// TODO (done): For Lukas, can u please set up implicit taint for return values (similar to how I did the jump see 5012 transition) 
+// TODO (done): For Lukas, can u please set up implicit taint for return values (similar to how I did the jump see 507 transition) 
 program_run(executed_blks, sv_tainted, final_arg_state, state, idx, final_args_sndr, hs, stack, prehist) :- 
         program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, hs, stack, prehist),   // 00010   clean it --> 00001 but this DOES NOT MEAN 00010 is gone
         executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = [prev_stack, possible_parent_blk], 
@@ -688,7 +693,7 @@ program_run([executed_blks, to_blk], sv_tainted, 0, 0, -1, 0, hs+1, stack, currh
         )
     ), 
     currhist = cat(cat(prehist, "=>"), to_blk),
-    hs < 12. 
+    hs < 7. 
 
 // return to argument setup block (from revert). NB: the arguments are reset as untainted
 program_run([executed_blks, to_blk], 0, 0, 0, -1, 0, hs+1, nil, currhist) :- 
@@ -697,7 +702,7 @@ program_run([executed_blks, to_blk], 0, 0, 0, -1, 0, hs+1, nil, currhist) :-
     arg_setup_blk(to_blk), 
     currhist = cat(cat(prehist, "=>"), to_blk),
     state < 2,    
-    hs < 12. 
+    hs < 7. 
 
 // return to privileged user from unprivileged user return (privileged user does not introduce user input taint -> no need for arg_setup_blk)
 program_run([executed_blks, to_blk], sv_tainted, 0, 2, -1, 0, hs+1, nil, currhist) :- 
@@ -710,14 +715,14 @@ program_run([executed_blks, to_blk], sv_tainted, 0, 2, -1, 0, hs+1, nil, currhis
     ),
     currhist = cat(cat(prehist, "=>"), to_blk),
     state < 2,
-    hs > 1, hs < 12. 
+    hs > 1, hs < 7. 
 
 // setup arguments inside argument setup block
 program_run(executed_blks, sv_tainted, args_tainted bor arg_taint, 0, idx, args_sndr, hs, stack, prehist) :- 
     program_run(executed_blks, sv_tainted, args_tainted, 0, last_arg, args_sndr, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], arg_setup_blk(last_blk),  // if you append new history here, this rule will run forever and program will crash
     argument(id, substr(last_blk, 3, strlen(last_blk)),idx), idx=last_arg+1, arg_bv(arg_taint, id),  // no need to worry about the case where there is no arguments 
-    hs < 12. 
+    hs < 7. 
 
 // ******************* END: FUNCTION EXECUTION FINISHED *******************
 
@@ -737,14 +742,14 @@ tainted_sinks(id), debug_info(executed_blks, sv_tainted, args_tainted, state, la
                     ),
                     is_tainted != 0.
 
-//.output debug_info
-//.output program_run
+.output debug_info
+.output program_run
 .output tainted_sinks
 //.output blockFollows
 //.output arg_setup_blk
 //.output num_args
-//.output arg_flow
-//.output conditioned_block
+.output arg_flow
+.output conditioned_block
 /*.output blockDominates
 .output blockFollows
 .output hasGuardSSA
