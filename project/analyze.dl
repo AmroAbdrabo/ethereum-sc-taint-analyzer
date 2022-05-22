@@ -159,16 +159,15 @@ block_modifies_sv(blk, field, state_dep, arg_dep, sndr_dep) :- store(stmt, field
 
 // We consider a (later guard) condition to be safe if it does not depend on user provided arguments. However, we keep
 // track of which state variables and which arguments it depends on.
-.decl safe_condition(stmt: SSA, state_dependency: number, arg_dependency: number, sndr_dep : number)  
+//.decl safe_condition(stmt: SSA, state_dependency: number, arg_dependency: number, sndr_dep : number)  
 
 // (Potentially) safe condition with dependency on state variables
+
+.decl safe_guarded_block(blk: Block, state_dependency: number, arg_dependency: number, sndr_dep: number)
 // sndr_dep being 0 means that the safe condition can potentially be safe if one of the arguments depends on sndr (and other values it depends on are clean)
 // sndr_dep being 1 means that the safe condition explicitly depends on msg.sender via an S-type SSA.
-safe_condition(stmt, sv, arg, sndr_dep) :- ssa_depens_complete(stmt, arg, sv, sndr_dep, _).
-
-// TODO: take into account argument transfers (see example 14)  
-.decl safe_guarded_block(blk: Block, state_dependency: number, arg_dependency: number, sndr_dep: number)
-safe_guarded_block(blk, state_dependency, arg_dependency, sndr_dep) :- safe_condition(stmt, state_dependency, arg_dependency, sndr_dep), branch(_,_, blk,_,_, stmt).// blockStmt(blk,stmt). block with safe guard condition need not have the var_cond defined inside the block (example: T0:: A02)
+safe_guarded_block(blk, state_dependency, arg_dependency, 0) :- ssa_depens_complete(stmt, arg_dependency, state_dependency, 0, _), arg_dependency != 0, branch(_,_, blk,_,_, stmt).// blockStmt(blk,stmt). block with safe guard condition need not have the var_cond defined inside the block (example: T0:: A02)
+safe_guarded_block(blk, state_dependency, arg_dependency, 1) :- ssa_depens_complete(stmt, arg_dependency, state_dependency, 1, _), branch(_,_, blk,_,_, stmt).
 
 .decl unconditioned_block(blk: Block)
 // Captures blocks which are not guarded (as in those that do have a condition that does NOT depend on msg.sender, and also those that do not have a condition alas)
