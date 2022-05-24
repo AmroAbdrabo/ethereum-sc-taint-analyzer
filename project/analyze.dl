@@ -371,14 +371,15 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
         executed_blks = [prev_exec, last_blk], blockFollows(last_blk, to_blk), !arg_setup_blk(to_blk), // NOT SURE if !arg_setup_blk() is really needed
         (
             (
-                block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),        
-                    arg_taint_dep = arg_dep band args_tainted,
-                    sv_taint_dep = state_dep band sv_tainted,
-                    is_sv_val_taint = (arg_taint_dep bor sv_taint_dep) bor sndr_dep,
-                    (
-                        (is_sv_val_taint != 0, sv_bv(bv, field), final_state = bv bor sv_tainted);
-                        (is_sv_val_taint = 0, sv_bv(bv, field), final_state = (bnot bv) band sv_tainted)
-                    )
+                block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),
+                sndr_val = sndr_dep bor (arg_dep band args_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
+                arg_taint_dep = arg_dep band (args_tainted band (bnot args_sndr)), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
+                sv_taint_dep = state_dep band sv_tainted,
+                is_sv_val_taint = (arg_taint_dep bor sv_taint_dep) bor sndr_val,
+                (
+                    (is_sv_val_taint != 0, sv_bv(bv, field), final_state = bv bor sv_tainted);
+                    (is_sv_val_taint = 0, sv_bv(bv, field), final_state = (bnot bv) band sv_tainted)
+                )
             );
             (
                 !doesModify(to_blk), final_state = sv_tainted
