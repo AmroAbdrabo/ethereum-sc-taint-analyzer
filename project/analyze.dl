@@ -340,17 +340,21 @@ program_run(executed_blks, sv_tainted, final_arg_state, state, idx, final_args_s
         // NEW: if you look at the graph of twelve-one.sol A01 is tainted b/c depended impl. on tainted value
         // The reason twelve-one.sol was passing thus far, was b/c our state machine treated the argument A01 as tainted for a reason I still need to figure out
         // If we are transferring a value from an antiguarded state, we propagate the taint on the argument we are transferring
-        arg_taint_dep = args_val band args_tainted,
-        sv_taint_dep = sv_val band sv_tainted,
-        non_sndr_taint = arg_taint_dep bor sv_taint_dep bor (state band 1),  // according to twelve--one.sol implicit taint holds even if the argument is a const
-        is_id_val_taint = non_sndr_taint bor sndr_val,
+        sndr_dep_complete = sndr_val bor (args_val band args_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
+        safe_sndr = -state/2, // wil be 0b1...1 if state > 1 i.e. privileged        
+        sndr_val_comp = sndr_dep_complete band (bnot safe_sndr),
+        arg_taint_dep = args_val band (args_tainted band (bnot args_sndr)),
+        sv_taint_dep = sv_val band sv_tainted, 
+        is_imp_tainted = -1*(state band 1),
+        non_sndr_taint = arg_taint_dep bor sv_taint_dep bor is_imp_tainted, // since we remain here inside the context of the if statement, consts are still clean (see twelve)
+        is_id_val_taint = non_sndr_taint bor sndr_val_comp, // sndr_val_comp is equiv. to sndr_dep_complete only if untrusted senter
         (
             (is_id_val_taint != 0, arg_bv(bv, arg), final_arg_state = bv bor args_tainted);
             (is_id_val_taint = 0, arg_bv(bv, arg), final_arg_state = (bnot bv) band args_tainted)  // 24.sol sometimes an argument needs to be cleaned b/c same function is called again with clean variable
         ),
-        (
-            (non_sndr_taint = 0, sndr_val = 1,  arg_bv(bv, arg), final_args_sndr = bv bor args_sndr); // if the only taint comes from the sndr, then include it in the bit vector
-            ((non_sndr_taint != 0; sndr_val=0) ,  arg_bv(bv, arg), final_args_sndr = (bnot bv) band args_sndr) // o/w remove it
+        (   // notice that unlike the is_id_val_taint here, sndr_dep_complete since we want to know if there is a dependency regardless whether msg sender is trusted or not
+            (non_sndr_taint = 0, sndr_dep_complete = 1,  arg_bv(bv, arg), final_args_sndr = bv bor args_sndr); // if the only taint comes from the sndr, then include it in the bit vector
+            ((non_sndr_taint != 0; sndr_dep_complete = 0),  arg_bv(bv, arg), final_args_sndr = (bnot bv) band args_sndr) // o/w remove it from args_sndr flag if there is non-sndr taint or no dependence on sndr
         ),
         hs < 13.
 //.output arg_flow
