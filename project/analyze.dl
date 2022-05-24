@@ -707,17 +707,9 @@ program_run([executed_blks, to_blk], sv_tainted, 0, 0, -1, 0, hs+1, stack, currh
             )
         )
     ), 
+    sv_tainted != 0,
     currhist = cat(cat(prehist, "=>"), to_blk),
     hs < 13. 
-
-// return to argument setup block (from revert). NB: the arguments are reset as untainted
-program_run([executed_blks, to_blk], 0, 0, 0, -1, 0, hs+1, nil, currhist) :- 
-    program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, hs, stack, prehist), 
-    executed_blks = [prev_exec, last_blk], revert(_, last_blk),
-    arg_setup_blk(to_blk), 
-    currhist = cat(cat(prehist, "=>"), to_blk),
-    state < 2,    
-    hs > 1, hs < 13. 
 
 // return to privileged user from unprivileged user return (privileged user does not introduce user input taint -> no need for arg_setup_blk)
 program_run([executed_blks, to_blk], sv_tainted, 0, 2, -1, 0, hs+1, nil, currhist) :- 
@@ -730,6 +722,7 @@ program_run([executed_blks, to_blk], sv_tainted, 0, 2, -1, 0, hs+1, nil, currhis
     ),
     currhist = cat(cat(prehist, "=>"), to_blk),
     state < 2,
+    sv_tainted != 0,
     hs > 1, hs < 13. 
 
 // setup arguments inside argument setup block
