@@ -86,7 +86,7 @@ def run_tests_timed(no_runs):
     solutions = get_solutions(True)
     score = 0
     no_passed = 0
-
+    no_timed_out = 0
     for f in solutions.keys():
         times = []
         for _ in range(no_runs):
@@ -98,7 +98,7 @@ def run_tests_timed(no_runs):
             times.append(elapsed)   
 
         avg_time = round(sum(times)/len(times)/10**9, 1)
-        
+        no_timed_out += (avg_time > 120)
          # Test passed
         if solutions[f] == result:
             print(f"\033[92mPASSED:\033[0m {f} [{avg_time}s]")
@@ -117,15 +117,7 @@ def run_tests_timed(no_runs):
     if not args.t:
         no_safe_tests = len([v for k,v in solutions.items() if v == 'Safe'])
         print(f"Passed ({no_passed}/{len(solutions)}) with score ({score}/{no_safe_tests})")
-
-
-
-
-
-
-
-
-
+        print('{no_timed_out} tests exceeded the time limit')
 
 if __name__ == "__main__":
     # create_solutions()
@@ -135,7 +127,6 @@ if __name__ == "__main__":
     parser.add_argument('--t', type=str, required=False)
     parser.add_argument('--timing', type=int, required=False)
     args = parser.parse_args()
-
 
     if args.timing:
         run_tests_timed(args.timing)
