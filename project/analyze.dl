@@ -346,7 +346,7 @@ program_run([executed_blks, to_blk], sv_taint, args_tainted, 0, -1, args_sndr, i
         currhist = cat(cat(prehist, ","), to_blk).
 
 // Handle argument taint transfer (ungarded)
-program_run(executed_blks, final_sv_tainted, final_arg_state, state, idx, final_args_sndr, imp_taint, imp_blk, hs, stack, prehist) :- 
+program_run(executed_blks, sv_tainted, final_arg_state, state, idx, final_args_sndr, imp_taint, imp_blk, hs, stack, prehist) :- 
         program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist),
         executed_blks = [prev_exec, last_blk], blockFollows(last_blk, to_blk),
         arg_flow(arg, id_val, idx, last_blk, to_blk), idx = last_arg+1, // push arguments in increasing order
@@ -823,8 +823,8 @@ program_run([executed_blks, to_blk], sv_tainted bor imp_taint, 0, 0, -1, 0, 0, "
     hs < 13. 
 
 // return to privileged user from unprivileged user return (privileged user does not introduce user input taint -> no need for arg_setup_blk)
-program_run([executed_blks, to_blk], sv_tainted, 0, 2, -1, 0, imp_taint, hs+1, nil, currhist) :- 
-    program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, hs, stack, prehist), 
+program_run([executed_blks, to_blk], sv_tainted bor imp_taint, 0, 2, -1, 0, 0, "", hs+1, nil, currhist) :- 
+    program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = nil,
     function(parent_blk, x), x != "Constructor",  
     (
@@ -837,8 +837,8 @@ program_run([executed_blks, to_blk], sv_tainted, 0, 2, -1, 0, imp_taint, hs+1, n
     hs > 1, hs < 13. 
 
 // setup arguments inside argument setup block
-program_run(executed_blks, sv_tainted, args_tainted bor arg_taint, 0, idx, args_sndr, imp_taint, hs, stack, prehist) :- 
-    program_run(executed_blks, sv_tainted, args_tainted, 0, last_arg, args_sndr, imp_taint, hs, stack, prehist), 
+program_run(executed_blks, sv_tainted, args_tainted bor arg_taint, 0, idx, args_sndr, 0, "", hs, stack, prehist) :- 
+    program_run(executed_blks, sv_tainted, args_tainted, 0, last_arg, args_sndr, _, _, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], arg_setup_blk(last_blk),  // if you append new history here, this rule will run forever and program will crash
     argument(id, substr(last_blk, 3, strlen(last_blk)),idx), idx=last_arg+1, arg_bv(arg_taint, id),  // no need to worry about the case where there is no arguments 
     hs < 13. 
