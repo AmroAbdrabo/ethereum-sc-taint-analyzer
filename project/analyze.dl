@@ -333,8 +333,8 @@ mustPassThru(a, b):- branch(_, _, a, _, _, _), !doesNotPassThru(a, b), blockFoll
 
 // State 0: unguarded -  00
 // State 1: antiguarded - 01
-// State 2: privileged user (has untainted user input, but can act as a confused deputy-- see 16.sol) - 16
-// State 3: privileged user running in antiguarded state (i.e. first bit determines whether we are in anti-guarded state or not. - 16
+// State 2: privileged user (has untainted user input, but can act as a confused deputy-- see 10.sol) - 10
+// State 3: privileged user running in antiguarded state (i.e. first bit determines whether we are in anti-guarded state or not. - 10
 // Make sure to remove anti-guarded state on return (i.e. branch dependency finishes) 
 
 // *********************** START: Normal ctrl flow (i.e. any ctrl flow other than JMP) *************************
@@ -372,7 +372,7 @@ program_run(executed_blks, sv_tainted, final_arg_state, state, idx, final_args_s
             (non_sndr_taint = 0, sndr_dep_complete != 0,  arg_bv(bv, arg), final_args_sndr = bv bor args_sndr); // if the only taint comes from the sndr, then include it in the bit vector
             ((non_sndr_taint != 0; sndr_dep_complete = 0),  arg_bv(bv, arg), final_args_sndr = (bnot bv) band args_sndr) // o/w remove it from args_sndr flag if there is non-sndr taint or no dependence on sndr
         ),
-        hs < 16.
+        hs < 10.
 //.output arg_flow
 //.output num_args
 
@@ -424,7 +424,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
             )
         ),
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 16.
+        hs < 10.
 
 // Case 1.1: antiguarded unprivileged state 
 // This case happens if we are currently in the anti-guarded state and then encounter the end of the ctrl flow induced by the tainted if-condition.
@@ -474,7 +474,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
             )
         ),
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 16.
+        hs < 10.
 
 
 // Case 1.2: antiguarded unprivileged state 
@@ -522,7 +522,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, 1, -1, args_sndr
             )
         ),
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 16.
+        hs < 10.
 
 
 // Case 2: privileged user (no antiguard)
@@ -571,7 +571,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
             )
         ),
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 16.
+        hs < 10.
 
 // Case 3.1: antiguarded privilege
 // This case happens if we are currently in the anti-guarded state and then encounter the end of the ctrl flow induced by the tainted if-condition.
@@ -605,11 +605,11 @@ program_run([executed_blks, to_blk], final_state, args_tainted, 2, -1, args_sndr
             )
         ), 
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 16.
+        hs < 10.
 
 // Case 3.2: antiguarded privilege
 // This case happens if we are currently in the anti-guarded state but do NOT encounter the end of the ctrl flow induced by the tainted if-condition 
-program_run([executed_blks, to_blk], final_state, args_tainted, 3, -1, args_sndr, imp_taint, imp_blk, hs+1, stack, currhist) :- 
+program_run([executed_blks, to_blk], final_state, args_tainted, 3, -1, args_sndr, final_imp_taint, imp_blk, hs+1, stack, currhist) :- 
         program_run(executed_blks, sv_tainted, args_tainted, 3, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
@@ -637,7 +637,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, 3, -1, args_sndr
             )
         ), 
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 16.
+        hs < 10.
 
 
 //.output blockFollows
@@ -701,7 +701,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state, -1, args_
                 !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = imp_taint
             )
          ), currhist = cat(cat(prehist, "-J->"), to_blk),
-         hs < 16.
+         hs < 10.
 
 
 // Return ctrl transfer 
@@ -734,7 +734,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state, -1, args_
                 !doesModify(to_blk), final_state = sv_tainted bor imp_taint
             )
         ), currhist = cat(cat(prehist, "-R->"), to_blk),
-        hs < 16.
+        hs < 10.
 
 // Return ctrl transfer 
 // R1.2, for this case we assume are NOT at a leaf node of a tainted ctrl-flow induced by a tainted if condition
@@ -767,7 +767,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state, -1, args_
                 !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = imp_taint 
             )
         ), currhist = cat(cat(prehist, "-R->"), to_blk),
-        hs < 16.
+        hs < 10.
 
 //.output mustPassThru
 // Return argument transfer
@@ -807,7 +807,7 @@ hasSelfDestruct(blk) :- statement(stmt), blockStmt(blk, stmt), selfdestruct(stmt
 
 
 // return to argument setup block (from normal return). NB: the arguments are reset as untainted
-program_run([executed_blks, to_blk], sv_tainted bor imp_taint, 0, 0, -1, 0, 0, "", hs+1, stack, currhist) :- 
+program_run([executed_blks, to_blk], sv_tainted bor imp_taint, 0, state, -1, 0, 0, "", hs+1, stack, currhist) :- 
     program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = nil,
     (
@@ -822,7 +822,7 @@ program_run([executed_blks, to_blk], sv_tainted bor imp_taint, 0, 0, -1, 0, 0, "
     ), 
     sv_tainted != 0,
     currhist = cat(cat(prehist, "=>"), to_blk),
-    hs < 16. 
+    hs < 10. 
 
 // return to privileged user from unprivileged user return (privileged user does not introduce user input taint -> no need for arg_setup_blk)
 program_run([executed_blks, to_blk], sv_tainted bor imp_taint, 0, 2, -1, 0, 0, "", hs+1, nil, currhist) :- 
@@ -836,14 +836,14 @@ program_run([executed_blks, to_blk], sv_tainted bor imp_taint, 0, 2, -1, 0, 0, "
     currhist = cat(cat(prehist, "=>"), to_blk),
     state < 2,
     sv_tainted != 0,
-    hs > 1, hs < 16. 
+    hs > 1, hs < 10. 
 
 // setup arguments inside argument setup block
 program_run(executed_blks, sv_tainted, args_tainted bor arg_taint, 0, idx, args_sndr, 0, "", hs, stack, prehist) :- 
     program_run(executed_blks, sv_tainted, args_tainted, 0, last_arg, args_sndr, _, _, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], arg_setup_blk(last_blk),  // if you append new history here, this rule will run forever and program will crash
     argument(id, substr(last_blk, 3, strlen(last_blk)),idx), idx=last_arg+1, arg_bv(arg_taint, id),  // no need to worry about the case where there is no arguments 
-    hs < 16. 
+    hs < 10. 
 
 // ******************* END: FUNCTION EXECUTION FINISHED *******************
 
