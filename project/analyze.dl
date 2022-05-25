@@ -405,7 +405,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
                 )
             );
             (
-                !doesModify(to_blk), final_state = sv_tainted
+                !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = 0
             )
         ), 
         (
@@ -417,8 +417,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
                     args_tainted_cond = guard_arg_dep band args_tainted, 
                     sv_tainted_cond   =  guard_sv_dep band sv_tainted,
                     is_tainted = (args_tainted_cond band (bnot args_sndr)) bor sv_tainted_cond, // For conditionals, we examine taint coming only from non-sndr sources? 
-                    (
-                        
+                    (   
                         (is_tainted = 0, guard_sndr_dep_comp = 0, state_end = 0, final_imp_blk = ""); // no taint then continue onto normal unguarded state 
                         (is_tainted != 0, state_end = 1, final_imp_blk = last_blk) // o/w continue to antiguarded state
                     )
