@@ -674,8 +674,8 @@ program_run(executed_blks, sv_tainted, final_arg_state, state, idx, final_args_s
 
 
 // Jump ctrl transfer (longBlock logic to be done later)
-program_run([executed_blks, to_blk], final_state, args_tainted, state, -1, args_sndr, imp_taint, hs, new_stack, currhist) :-   
-         program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, hs, stack, prehist), (
+program_run([executed_blks, to_blk], final_state, args_tainted, state, -1, args_sndr, final_imp_taint, imp_blk, hs, new_stack, currhist) :-   
+         program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _) // either the block we're flowing into does not take arguments or the block we're flowing out of does not provide arguments
         ),
@@ -694,7 +694,8 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state, -1, args_
                 (
                     (is_sv_val_taint != 0, sv_bv(bv, field), final_state = bv bor sv_tainted);
                     (is_sv_val_taint = 0, sv_bv(bv, field), final_state = (bnot bv) band sv_tainted)
-                )
+                ),
+                final_imp_taint = (state band 1)*bv bor imp_taint
             );
             // block does not modify sv 
             (
@@ -704,17 +705,50 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state, -1, args_
          hs < 13.
 
 
-// Return ctrl transfer (I think if we jump inside an implicitly tainted if-scope and then return we should still have antiguarded bit active, o/w if it's a return 
-// that redirects control flow to user, then it should be set to 0
-program_run([executed_blks, to_blk], final_state, args_tainted, state band -2, -1, args_sndr, imp_taint, hs+1, new_stack, currhist) :-  // remove implicit flag by banding by -2
-         program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, hs, stack, prehist), (
+// Return ctrl transfer 
+// R1.1, for this case we assume we have arrived at a leaf node of a tainted ctrl-flow induced by a tainted if condition
+program_run([executed_blks, to_blk], final_state, args_tainted, state, -1, args_sndr, 0, "", hs+1, new_stack, currhist) :-  // remove implicit flag by banding by -2
+         program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
         ),
-         executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = [prev_stack, parent_blk], 
-         new_stack = prev_stack,  ((!longBlock(parent_blk), to_blk = parent_blk);
-         (longBlock(parent_blk), !not_first_store(to_blk, sid, parent_blk), store_block(to_blk, parent, sid))),
-         (
+        executed_blks = [prev_exec, last_blk], mustPassThru(imp_blk, last_blk), 
+        return(_, last_blk), stack = [prev_stack, parent_blk], 
+        new_stack = prev_stack,  ((!longBlock(parent_blk), to_blk = parent_blk);
+        (longBlock(parent_blk), !not_first_store(to_blk, sid, parent_blk), store_block(to_blk, parent, sid))),
+        (
+            (
+                block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),
+                sndr_dep_complete = sndr_dep bor (arg_dep band args_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
+                safe_sndr = -state/2, // wil be 0b1...1 if state > 1 i.e. privileged        
+                sndr_val = sndr_dep_complete band (bnot safe_sndr),
+                arg_taint_dep = arg_dep band (args_tainted band (bnot args_sndr)), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
+                sv_taint_dep = state_dep band sv_tainted,
+                is_sv_val_taint = (arg_taint_dep bor sv_taint_dep) bor sndr_val,
+                (
+                    (is_sv_val_taint != 0, sv_bv(bv, field), final_state = bv bor (sv_tainted bor imp_taint));
+                    (is_sv_val_taint = 0, sv_bv(bv, field), final_state = (bnot bv) band (sv_tainted bor imp_taint))
+                )
+            );
+            // block does not modify sv 
+            (
+                !doesModify(to_blk), final_state = sv_tainted bor imp_taint
+            )
+        ), currhist = cat(cat(prehist, "-R->"), to_blk),
+        hs < 13.
+
+// Return ctrl transfer 
+// R1.2, for this case we assume are NOT at a leaf node of a tainted ctrl-flow induced by a tainted if condition
+program_run([executed_blks, to_blk], final_state, args_tainted, state, -1, args_sndr, final_imp_taint, imp_blk, hs+1, new_stack, currhist) :-  // remove implicit flag by banding by -2
+         program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
+            num_args(last_blk, to_blk, last_arg+1);
+            !num_args(last_blk, to_blk, _)
+        ),
+        executed_blks = [prev_exec, last_blk], !mustPassThru(imp_blk, last_blk), 
+        return(_, last_blk), stack = [prev_stack, parent_blk], 
+        new_stack = prev_stack,  ((!longBlock(parent_blk), to_blk = parent_blk);
+        (longBlock(parent_blk), !not_first_store(to_blk, sid, parent_blk), store_block(to_blk, parent, sid))),
+        (
             (
                 block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),
                 sndr_dep_complete = sndr_dep bor (arg_dep band args_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
@@ -726,18 +760,20 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state band -2, -
                 (
                     (is_sv_val_taint != 0, sv_bv(bv, field), final_state = bv bor sv_tainted);
                     (is_sv_val_taint = 0, sv_bv(bv, field), final_state = (bnot bv) band sv_tainted)
-                )
+                ),
+                final_imp_taint = (state band 1)*bv bor imp_taint
             );
             // block does not modify sv 
             (
                 !doesModify(to_blk), final_state = sv_tainted
             )
-         ), currhist = cat(cat(prehist, "-R->"), to_blk),
-         hs < 13.
+        ), currhist = cat(cat(prehist, "-R->"), to_blk),
+        hs < 13.
+
 
 // Return argument transfer
-program_run(executed_blks, sv_tainted, final_arg_state, state, idx, final_args_sndr, imp_taint, hs, stack, prehist) :- 
-        program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, hs, stack, prehist),   // 00010   clean it --> 00001 but this DOES NOT MEAN 00010 is gone
+program_run(executed_blks, sv_tainted, final_arg_state, state, idx, final_args_sndr, imp_taint, imp_blk, hs, stack, prehist) :- 
+        program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist),   // 00010   clean it --> 00001 but this DOES NOT MEAN 00010 is gone
         executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = [prev_stack, possible_parent_blk], 
         ((longBlock(possible_parent_blk), first_mini_blk(possible_parent_blk, to_blk));(!longBlock(possible_parent_blk), to_blk = possible_parent_blk)),
         arg_flow(arg, id_val, idx, last_blk, to_blk),
@@ -773,8 +809,8 @@ hasSelfDestruct(blk) :- statement(stmt), blockStmt(blk, stmt), selfdestruct(stmt
 
 
 // return to argument setup block (from normal return). NB: the arguments are reset as untainted
-program_run([executed_blks, to_blk], sv_tainted, 0, 0, -1, 0, imp_taint, hs+1, stack, currhist) :- 
-    program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, hs, stack, prehist), 
+program_run([executed_blks, to_blk], sv_tainted bor imp_taint, 0, 0, -1, 0, 0, "", hs+1, stack, currhist) :- 
+    program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = nil,
     (
         (arg_setup_blk(to_blk), state < 2); // only go the block which sets up user taint if we are not the admin user
