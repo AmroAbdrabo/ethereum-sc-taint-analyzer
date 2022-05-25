@@ -438,7 +438,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
         ),
         // If the next block is a convergence node (not leaf node, i.e. return or revert) for the tainted if condition, then we exit the tainted state
         // and we transfer the lightly tainted arguments over to the to_blk's  (not lightly) tainted arguments
-        mustPassThru(imp_blk, to_blk), !(return(_, to_blk); revert(_, to_blk)), // ag_exit means anti-guard exit
+        mustPassThru(imp_blk, to_blk), !(return(_, to_blk); revert(_, to_blk)), 
         executed_blks = [prev_exec, last_blk], blockFollows(last_blk, to_blk), !arg_setup_blk(to_blk), // NOT SURE if !arg_setup_blk() is really needed
         (
             (
@@ -488,7 +488,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, 1, -1, args_sndr
         ),
         // If the next block is a convergence node (not leaf node, i.e. return or revert) for the tainted if condition, then we exit the tainted state
         // and we transfer the lightly tainted arguments over to the to_blk's  (not lightly) tainted arguments
-        !mustPassThru(imp_blk, to_blk), // ag_exit means anti-guard exit
+        !mustPassThru(imp_blk, to_blk), 
         executed_blks = [prev_exec, last_blk], blockFollows(last_blk, to_blk), !arg_setup_blk(to_blk), // NOT SURE if !arg_setup_blk() is really needed
         (
             (
@@ -527,12 +527,9 @@ program_run([executed_blks, to_blk], final_state, args_tainted, 1, -1, args_sndr
         hs < 13.
 
 
-
-
-
 // Case 2: privileged user (no antiguard)
-program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, args_sndr, imp_taint,  hs+1, stack, currhist) :- 
-        program_run(executed_blks, sv_tainted, args_tainted, 2, last_arg, args_sndr, imp_taint, hs, stack, prehist), (
+program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, args_sndr, final_imp_taint, final_imp_blk,  hs+1, stack, currhist) :- 
+        program_run(executed_blks, sv_tainted, args_tainted, 2, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
         ),
@@ -580,15 +577,18 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
 
 // Case 3.1: antiguarded privilege
 // This case happens if we are currently in the anti-guarded state and then encounter the end of the ctrl flow induced by the tainted if-condition.
-// Since we are in the unprivileged state, we need to make sure there is no guard 
-program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, args_sndr, imp_taint, hs+1, stack, currhist) :- 
-        program_run(executed_blks, sv_tainted, args_tainted, 3, last_arg, args_sndr, imp_taint, hs, stack, prehist), (
+// Since we are in the unprivileged state, we need to make sure there is no guard.
+
+// As we are moving to a node of convergence (of all tainted if branches), the state will be normal again and the imp_taint vars will all be reset
+// we get: final_imp_taint = 0, final_imp_blk = "", state_end = 2
+program_run([executed_blks, to_blk], final_state, args_tainted, 2, -1, args_sndr, 0, "", hs+1, stack, currhist) :- 
+        program_run(executed_blks, sv_tainted, args_tainted, 3, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
         ),
         // If the next block is a convergence node (not leaf node, i.e. return or revert) for the tainted if condition, then we exit the tainted state
         // and we transfer the lightly tainted arguments over to the to_blk's  (not lightly) tainted arguments
-        mustPassThru(imp_blk, to_blk), !(return(_, to_blk); revert(_, to_blk)), // ag_exit means anti-guard exit
+        mustPassThru(imp_blk, to_blk), !(return(_, to_blk); revert(_, to_blk)), 
         executed_blks = [prev_exec, last_blk], blockFollows(last_blk, to_blk), !arg_setup_blk(to_blk), // NOT SURE if !arg_setup_blk() is really needed
         (
             (
@@ -606,18 +606,47 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
                 !doesModify(to_blk), final_state = sv_tainted bor imp_taint
             )
         ), 
-        (
-            // As we are moving to a node of convergence (of all tainted if branches), the state will be normal again and the imp_taint vars will all be reset
-            final_imp_taint = 0, final_imp_blk = "", state_end = 2
-        ),
         currhist = cat(cat(prehist, ","), to_blk),
         hs < 13.
+
+// Case 3.2: antiguarded privilege
+// This case happens if we are currently in the anti-guarded state but do NOT encounter the end of the ctrl flow induced by the tainted if-condition 
+program_run([executed_blks, to_blk], final_state, args_tainted, 3, -1, args_sndr, imp_taint, imp_blk, hs+1, stack, currhist) :- 
+        program_run(executed_blks, sv_tainted, args_tainted, 3, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
+            num_args(last_blk, to_blk, last_arg+1);
+            !num_args(last_blk, to_blk, _)
+        ),
+        // If the next block is not a convergence node (and not leaf node, i.e. return or revert) for the tainted if condition, then we 
+        // continue in the same state we were
+        !mustPassThru(imp_blk, to_blk), 
+        executed_blks = [prev_exec, last_blk], blockFollows(last_blk, to_blk), !arg_setup_blk(to_blk), // NOT SURE if !arg_setup_blk() is really needed
+        (
+            (
+                block_modifies_sv(to_blk, field, state_dep, arg_dep, _),
+                arg_taint_dep = arg_dep band (args_tainted band (bnot args_sndr)), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
+                sv_taint_dep = state_dep band sv_tainted,
+                is_sv_val_taint = arg_taint_dep bor sv_taint_dep,
+                sv_bv(bv, field), 
+                (   
+                    (is_sv_val_taint != 0, final_state = bv bor sv_tainted); // if we are exiting the antiguard, we apply the implicit taint to the final state
+                    (is_sv_val_taint = 0, final_state = (bnot bv) band sv_tainted) // we give priority to cleaning for precision as it is done after the implicit taint
+                ),
+                // Since the to_blk happens to be in the tainted ctrl-flow we add the implicit taint on it
+                final_imp_taint = imp_taint bor bv
+            );
+            (
+                !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = imp_taint
+            )
+        ), 
+        currhist = cat(cat(prehist, ","), to_blk),
+        hs < 13.
+
 
 //.output blockFollows
 //  ******************* START: JUMP LOGIC  *******************
 // Handle jump arguments and stack (ungarded). Amro: removed the stack from here since it was being done in the JMP CTRL transfer below
-program_run(executed_blks, sv_tainted, final_arg_state, state, idx, final_args_sndr, imp_taint, hs, stack, prehist) :- 
-        program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, hs, stack, prehist),
+program_run(executed_blks, sv_tainted, final_arg_state, state, idx, final_args_sndr, imp_taint, imp_blk, hs, stack, prehist) :- 
+        program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist),
         executed_blks = [prev_exec, last_blk], jump(_, last_blk, to_blk, cont_blk), idx = last_arg + 1,
         (
             (arg_flow(arg, id_val, idx, last_blk, to_blk), !longBlock(to_blk));
