@@ -562,6 +562,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
                 )
             );
             (
+                // if we don't modify anything, then we tainted sv's as they are. Since we are also coming from a privileged state we can reset implicit taint to 0 
                 !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = 0
             )
         ), 
@@ -575,16 +576,8 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
                     sv_tainted_cond   =  guard_sv_dep band sv_tainted,
                     is_tainted = (args_tainted_cond band (bnot args_sndr)) bor sv_tainted_cond, // For conditionals, we examine taint coming only from non-sndr sources? 
                     (
-                        ( 
-                            guard_sndr_dep_comp != 0, is_tainted != 0, state_end = 1, final_imp_blk = last_blk // If yes, then next state is antiguarded (o/w the next state can only be accessed by priv'd user since it is guarded)
-                        );
-                        (
-                            guard_sndr_dep_comp = 0,
-                            (
-                                (is_tainted = 0, state_end = 0, final_imp_blk = ""); // no taint then continue onto normal unguarded state 
-                                (is_tainted != 0, state_end = 1, final_imp_blk = last_blk) // o/w continue to antiguarded state
-                            )
-                        )
+                        (is_tainted != 0, state_end = 3, final_imp_blk = last_blk); // If yes, then next state is antiguarded (o/w the next state can only be accessed by priv'd user since it is guarded)
+                        (is_tainted = 0, state_end = 2, final_imp_blk = "")
                     )
                 )
             )
