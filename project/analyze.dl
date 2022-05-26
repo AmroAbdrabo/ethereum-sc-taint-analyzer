@@ -810,12 +810,7 @@ hasSelfDestruct(blk) :- statement(stmt), blockStmt(blk, stmt), selfdestruct(stmt
 program_run([executed_blks, to_blk], sv_tainted bor imp_taint, 0, 0, -1, 0, 0, "", hs+1, stack, currhist) :- 
     program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = nil, arg_setup_blk(to_blk),
-    (
-        (state < 2); // only go the block which sets up user taint if we are not the admin user
-        (
-            (state > 1), !hasSelfDestruct(last_blk)
-        )
-    ), 
+    !hasSelfDestruct(last_blk), 
     sv_tainted != 0,
     currhist = cat(cat(prehist, "=>"), to_blk),
     hs < 16. 
@@ -824,7 +819,7 @@ program_run([executed_blks, to_blk], sv_tainted bor imp_taint, 0, 0, -1, 0, 0, "
 program_run([executed_blks, to_blk], sv_tainted bor imp_taint, 0, 2, -1, 0, 0, "", hs+1, nil, currhist) :- 
     program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), 
     executed_blks = [prev_exec, last_blk], return(_, last_blk), stack = nil,
-    function(parent_blk, x), x != "Constructor",  
+    function(parent_blk, x), x != "Constructor", !hasSelfDestruct(last_blk),  
     (
         (!longBlock(parent_blk), to_blk = parent_blk);
         (longBlock(parent_blk), !not_first_store(to_blk, _, parent_blk), store_block(to_blk, parent, _))
@@ -854,7 +849,7 @@ tainted_sinks("id"), debug_info(executed_blks, sv_tainted, args_tainted, state, 
                     executed_blks = [prev_blks, last_blk], ssa_depens_complete(addr, args_dep, sv_dep, sndr, cnt), 
                     has_tainted_arg = args_dep band args_tainted, has_tainted_sv = sv_dep band sv_tainted, 
                     (
-                        (is_tainted = has_tainted_arg bor has_tainted_sv bor sndr,(state=0; state=1));
+                        (is_tainted = has_tainted_arg bor has_tainted_sv bor sndr bor (args_dep band args_sndr),(state=0; state=1));
                         (is_tainted = has_tainted_arg bor has_tainted_sv, (state = 2; state = 3))
                     ),
                     is_tainted != 0.
