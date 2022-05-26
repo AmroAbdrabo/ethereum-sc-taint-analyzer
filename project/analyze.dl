@@ -844,7 +844,6 @@ program_run(executed_blks, sv_tainted, args_tainted bor arg_taint, 0, idx, args_
 //debug_info(executed_blks, sv_tainted, args_tainted, state, hs,stack, hist) :- program_run(executed_blks, sv_tainted, args_tainted, state, hs,stack, hist), state = 2.
 
 
-// TODO: check also for state 3 (privileged but antiguarded)
 tainted_sinks("id"), debug_info(executed_blks, sv_tainted, args_tainted, state, la, args_sndr, imp_taint, imp_blk, hs,stack, hist) :-selfdestruct(id, addr), program_run(executed_blks, sv_tainted, args_tainted, state, la, args_sndr, imp_taint,imp_blk,  hs,stack, hist), blockStmt(last_blk, id),
                     executed_blks = [prev_blks, last_blk], ssa_depens_complete(addr, args_dep, sv_dep, sndr, cnt), 
                     has_tainted_arg = args_dep band args_tainted, has_tainted_sv = sv_dep band sv_tainted, 
@@ -868,41 +867,4 @@ tainted_sinks("id"), debug_info(executed_blks, sv_tainted, args_tainted, state, 
 .output unguardedTaintedSSA
 .output guardSSA
 .output taintedSSA
-*/
-
-
-
-/*
-
-            // If there is a straight edge between last_blk and to_blk, then 
-            (unconditioned_block(last_blk), state_end = 1);
-            (   
-                conditioned_block(last_blk, guard_sv_dep, guard_arg_dep, guard_sndr_dep),
-                (
-                    args_tainted_cond = guard_arg_dep band args_tainted, 
-                    sv_tainted_cond   =  guard_sv_dep band sv_tainted,
-                    is_tainted = (args_tainted_cond band (bnot args_sndr)) bor sv_tainted_cond, // For conditionals, we examine taint coming only from non-sndr sources? 
-                    (
-                        ( 
-                            guard_sndr_dep = 1, is_tainted != 0, state_end = 1 // If yes, then next state is antiguarded (o/w the next state can only be accessed by priv'd user since it is guarded)
-                        );
-                        (
-                            guard_sndr_dep = 0, // there is no EXPLICIT dependency, but could there be an implicit one?
-                            depends_on_sndr = args_sndr band guard_arg_dep,   // depends_on_sndr is non zero if there are arguments which are tainted by sndr (only) and are referenced by the condition
-                            (
-                                (
-                                    depends_on_sndr = 0,  // no dependency on arguments which are tainted by sndr only --> this cannot be a guard
-                                    // Not a guard --> we remain in antiguarded unprivleged state
-                                    state_end = 1
-                                );
-                                (
-                                    depends_on_sndr != 0,  // There is a dependency on arguments which are tainted by sndr only --> this can possibly be a guard
-                                    // Could there be a non-sndr taint in the condition?
-                                    is_tainted != 0, state_end = 1 // If there is taint, then next state is antiguarded (o/w the next state can only be accessed by priv'd user since it is guarded)      
-                                )
-                            )
-                        )
-                    )
-                )
-            )
 */
