@@ -305,9 +305,9 @@ blockFollows(setup_blk, sblk) :-  arg_setup_blk(setup_blk), longBlock(fblk), fbl
 // At the end of execution of executed_blks, sv_state determines the state variables which are tainted (have bit set to one),
 // arg_state determines the arguments which are tainted (have bit set to one), guarded determines whether it is guarded (by the end of execution of executed_blks)
 // string hist is B00B01
-.decl program_run(executed_blks: BlkList, sv_state: number, arg_state: number, guarded: number, arg_stack: number, args_sndr: number, implicit_taint: number,  imp_block: Block, hist_size: number, stack: BlkList, string_hist: symbol) // final state after executing blklist
+.decl program_run(last_blk: Block, sv_state: number, arg_state: number, guarded: number, arg_stack: number, args_sndr: number, implicit_taint: number,  imp_block: Block, hist_size: number, stack: BlkList, string_hist: symbol) // final state after executing blklist
 // base case
-program_run([nil, constructor_block], 0, 0, 0, -1, 0, 0, "",1, nil, "C") :- function(constructor_block, "Constructor").
+program_run(constructor_block, 0, 0, 0, -1, 0, 0, "",1, nil, "C") :- function(constructor_block, "Constructor").
 
 //.output arg_flow
 .decl hasArg(blk: Block)
@@ -340,28 +340,35 @@ mustPassThru(a, b):- branch(_, _, a, _, _, _), !doesNotPassThru(a, b), blockFoll
 // *********************** START: Normal ctrl flow (i.e. any ctrl flow other than JMP) *************************
 
 // If we are currently at the argument setup block (for user defined input)  -- removed tainting new record's arguments, see the bottom-most rule
-program_run([executed_blks, to_blk], sv_taint, args_tainted, 0, -1, args_sndr, imp_taint, imp_blk, hs+1, stack, currhist) :-  
-        program_run(executed_blks, sv_taint, args_tainted, 0, -1, args_sndr, imp_taint, imp_blk, hs, stack, prehist),
-        blockFollows(last_exec_blk, to_blk), arg_setup_blk(to_blk), // guaranteed to be following from constructor (only where we can reach arg_setup_blk is via constructor) 
-        executed_blks = [ancient_list, last_exec_blk],
-        //currhist = cat(prehist, cat("->",substr(to_blk, 3, strlen(to_blk)))).
+program_run(to_blk, sv_taint, args_tainted, 0, -1, args_sndr, imp_taint, imp_blk, hs+1, stack, currhist) :-  
+        program_run(last_blk, sv_taint, args_tainted, 0, -1, args_sndr, imp_taint, imp_blk, hs, stack, prehist),
+        blockFollows(last_blk, to_blk), arg_setup_blk(to_blk), // guaranteed to be following from constructor (only where we can reach arg_setup_blk is via constructor) 
         currhist = cat(cat(prehist, ","), to_blk).
 
 // Handle argument taint transfer (ungarded)
-program_run(executed_blks, sv_tainted, final_arg_state, state, idx, final_args_sndr, imp_taint, imp_blk, hs, stack, prehist) :- 
-        program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist),
-        executed_blks = [prev_exec, last_blk], blockFollows(last_blk, to_blk),
+program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, imp_taint, imp_blk, hs, stack, prehist) :- 
+        program_run(last_blk, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist),
+        blockFollows(last_blk, to_blk),
         arg_flow(arg, id_val, idx, last_blk, to_blk), idx = last_arg+1, // push arguments in increasing order
         ssa_depens_complete(id_val, args_val, sv_val, sndr_val, cnt_val), 
         // NEW: if you look at the graph of twelve-one.sol A01 is tainted b/c depended impl. on tainted value
         // The reason twelve-one.sol was passing thus far, was b/c our state machine treated the argument A01 as tainted for a reason I still need to figure out
         // If we are transferring a value from an antiguarded state, we propagate the taint on the argument we are transferring
+
+        // Tainted msg.sender dependency 
         sndr_dep_complete = sndr_val bor (args_val band args_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
         safe_sndr = -state/2, // wil be 0b1...1 if state > 1 i.e. privileged        
         sndr_val_comp = sndr_dep_complete band (bnot safe_sndr),
+
+        // Tainted argument dependency 
         arg_taint_dep = args_val band (args_tainted band (bnot args_sndr)),
-        sv_taint_dep = sv_val band sv_tainted, 
+        
+        // Tainted SV dependency
+        sv_taint_dep = sv_val band sv_tainted,
+
+        // Implicit taint dependency 
         is_imp_tainted = -1*(state band 1),
+
         non_sndr_taint = arg_taint_dep bor sv_taint_dep bor is_imp_tainted, // since we remain here inside the context of the if statement, consts are still clean (see twelve)
         is_id_val_taint = non_sndr_taint bor sndr_val_comp, // sndr_val_comp is equiv. to sndr_dep_complete only if untrusted senter
         (
@@ -369,22 +376,19 @@ program_run(executed_blks, sv_tainted, final_arg_state, state, idx, final_args_s
             (is_id_val_taint = 0, arg_bv(bv, arg), final_arg_state = (bnot bv) band args_tainted)  // 24.sol sometimes an argument needs to be cleaned b/c same function is called again with clean variable
         ),
         (   // notice that unlike the is_id_val_taint here, sndr_dep_complete since we want to know if there is a dependency regardless whether msg sender is trusted or not
-            (non_sndr_taint = 0, sndr_dep_complete != 0,  arg_bv(bv, arg), final_args_sndr = bv bor args_sndr); // if the only taint comes from the sndr, then include it in the bit vector
-            ((non_sndr_taint != 0; sndr_dep_complete = 0),  arg_bv(bv, arg), final_args_sndr = (bnot bv) band args_sndr) // o/w remove it from args_sndr flag if there is non-sndr taint or no dependence on sndr
-        ),
-        hs < 16.
-//.output arg_flow
-//.output num_args
+            (sndr_dep_complete != 0,  arg_bv(bv, arg), final_args_sndr = bv bor args_sndr); // if the only taint comes from the sndr, then include it in the bit vector
+            (sndr_dep_complete = 0,  arg_bv(bv, arg), final_args_sndr = (bnot bv) band args_sndr) // o/w remove it from args_sndr flag if there is non-sndr taint or no dependence on sndr
+        ).
 
 // Handle state variable taint transfer (ungarded). New: checks first there is NO guard inside last_blk to know if we can still remain in unguarded state 
 
 // Case 0: unguarded non-privileged user
-program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, args_sndr, final_imp_taint, final_imp_blk, hs+1, stack, currhist) :- 
-        program_run(executed_blks, sv_tainted, args_tainted, 0, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
+program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, final_imp_taint, final_imp_blk, hs+1, stack, currhist) :- 
+        program_run(last_blk, sv_tainted, args_tainted, 0, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
         ),
-        executed_blks = [prev_exec, last_blk], blockFollows(last_blk, to_blk), !arg_setup_blk(to_blk), // NOT SURE if !arg_setup_blk() is really needed
+        blockFollows(last_blk, to_blk), 
         (
             (
                 block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),
@@ -429,15 +433,15 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
 // Case 1.1: antiguarded unprivileged state 
 // This case happens if we are currently in the anti-guarded state and then encounter the end of the ctrl flow induced by the tainted if-condition.
 // Since we are in the unprivileged state, we need to make sure there is no guard 
-program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, args_sndr, final_imp_taint, final_imp_blk, hs+1, stack, currhist) :- 
-        program_run(executed_blks, sv_tainted, args_tainted, 1, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
+program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, final_imp_taint, final_imp_blk, hs+1, stack, currhist) :- 
+        program_run(last_blk, sv_tainted, args_tainted, 1, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
         ),
         // If the next block is a convergence node (not leaf node, i.e. return or revert) for the tainted if condition, then we exit the tainted state
         // and we transfer the lightly tainted arguments over to the to_blk's  (not lightly) tainted arguments
-        mustPassThru(imp_blk, to_blk), //!(return(_, to_blk); revert(_, to_blk)), 
-        executed_blks = [prev_exec, last_blk], blockFollows(last_blk, to_blk), !arg_setup_blk(to_blk), // NOT SURE if !arg_setup_blk() is really needed
+        mustPassThru(imp_blk, to_blk), // We are reaching the point of convergence of the tainted ctrl flow
+        blockFollows(last_blk, to_blk), 
         (
             (
                 block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),
@@ -447,7 +451,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
                 is_sv_val_taint = (arg_taint_dep bor sv_taint_dep) bor sndr_val,
                 sv_bv(bv, field), 
                 (   
-                    (is_sv_val_taint != 0, final_state = (bv bor sv_tainted) bor imp_taint); // if we are exiting the antiguard, we apply the implicit taint to the final state
+                    (is_sv_val_taint != 0, final_state = (bv bor sv_tainted) bor imp_taint); // Since we are exiting the antiguard, we apply the implicit taint to the final state
                     (is_sv_val_taint = 0, final_state = (bnot bv) band (sv_tainted bor imp_taint)) // we give priority to cleaning for precision as it is done after the implicit taint
                 )
             );
@@ -479,7 +483,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
 
 // Case 1.2: antiguarded unprivileged state 
 // This case happens if we are currently in the anti-guarded state but do NOT encounter the end of the ctrl flow induced by the tainted if-condition 
-program_run([executed_blks, to_blk], final_state, args_tainted, 1, -1, args_sndr, final_imp_taint, imp_blk, hs+1, stack, currhist) :- 
+program_run(to_blk, final_state, args_tainted, 1, -1, args_sndr, final_imp_taint, imp_blk, hs+1, stack, currhist) :- 
         program_run(executed_blks, sv_tainted, args_tainted, 1, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
