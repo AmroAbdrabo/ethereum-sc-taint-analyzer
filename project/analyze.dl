@@ -484,14 +484,14 @@ program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, final_i
 // Case 1.2: antiguarded unprivileged state 
 // This case happens if we are currently in the anti-guarded state but do NOT encounter the end of the ctrl flow induced by the tainted if-condition 
 program_run(to_blk, final_state, args_tainted, 1, -1, args_sndr, final_imp_taint, imp_blk, hs+1, stack, currhist) :- 
-        program_run(executed_blks, sv_tainted, args_tainted, 1, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
+        program_run(last_blk, sv_tainted, args_tainted, 1, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
         ),
         // If the next block is a convergence node (not leaf node, i.e. return or revert) for the tainted if condition, then we exit the tainted state
         // and we transfer the lightly tainted arguments over to the to_blk's  (not lightly) tainted arguments
         !mustPassThru(imp_blk, to_blk), 
-        executed_blks = [prev_exec, last_blk], blockFollows(last_blk, to_blk), !arg_setup_blk(to_blk), // NOT SURE if !arg_setup_blk() is really needed
+        blockFollows(last_blk, to_blk), 
         (
             (
                 block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),
@@ -530,12 +530,12 @@ program_run(to_blk, final_state, args_tainted, 1, -1, args_sndr, final_imp_taint
 
 
 // Case 2: privileged user (no antiguard)
-program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, args_sndr, final_imp_taint, final_imp_blk,  hs+1, stack, currhist) :- 
-        program_run(executed_blks, sv_tainted, args_tainted, 2, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
+program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, final_imp_taint, final_imp_blk,  hs+1, stack, currhist) :- 
+        program_run(last_blk, sv_tainted, args_tainted, 2, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
         ),
-        executed_blks = [prev_exec, last_blk], blockFollows(last_blk, to_blk), !arg_setup_blk(to_blk), // NOT SURE if !arg_setup_blk() is really needed
+        blockFollows(last_blk, to_blk), 
         (
             (
                 // notice sndr is not considered a taint
@@ -559,7 +559,7 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
             )
         ), 
         (
-            (unconditioned_block(last_blk), state_end = 0, final_imp_blk = imp_blk);
+            (unconditioned_block(last_blk), state_end = 2, final_imp_blk = imp_blk);
             (   
                 conditioned_block(last_blk, guard_sv_dep, guard_arg_dep, guard_sndr_dep),
                 (
@@ -583,15 +583,15 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state_end, -1, a
 
 // As we are moving to a node of convergence (of all tainted if branches), the state will be normal again and the imp_taint vars will all be reset
 // we get: final_imp_taint = 0, final_imp_blk = "", state_end = 2
-program_run([executed_blks, to_blk], final_state, args_tainted, 2, -1, args_sndr, 0, "", hs+1, stack, currhist) :- 
-        program_run(executed_blks, sv_tainted, args_tainted, 3, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
+program_run(to_blk, final_state, args_tainted, 2, -1, args_sndr, 0, "", hs+1, stack, currhist) :- 
+        program_run(last_blk, sv_tainted, args_tainted, 3, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
         ),
         // If the next block is a convergence node (not leaf node, i.e. return or revert) for the tainted if condition, then we exit the tainted state
         // and we transfer the lightly tainted arguments over to the to_blk's  (not lightly) tainted arguments
         mustPassThru(imp_blk, to_blk), //!(return(_, to_blk); revert(_, to_blk)), 
-        executed_blks = [prev_exec, last_blk], blockFollows(last_blk, to_blk), !arg_setup_blk(to_blk), // NOT SURE if !arg_setup_blk() is really needed
+        blockFollows(last_blk, to_blk), !arg_setup_blk(to_blk), // NOT SURE if !arg_setup_blk() is really needed
         (
             (
                 block_modifies_sv(to_blk, field, state_dep, arg_dep, _),
