@@ -29,10 +29,11 @@ contract Contract {
 
   function foo(address x) public {
     set1(y, x);
-    // in this call, j in set3 is trusted
+    // inside this call, in set3,
     // if the execution goes through require(msg.sender == c) (a guard), x becomes trusted and is assigned to b.
-    // otherwise, b remains the old trusted value
-    // so b is always trusted
+    // otherwise, b remains the old trusted value.
+    // b also implicitly depends on j, which holds the trusted value of y.
+    // so b is always trusted.
     require(msg.sender == b); // guard
     selfdestruct(msg.sender); // safe
   }

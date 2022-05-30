@@ -1,7 +1,7 @@
 pragma solidity ^0.5.0;
 
-// the contract is safe
-// the output of your analyzer should be Safe
+// the contract is vulnerable
+// the output of your analyzer should be Tainted
 contract Contract {
   address a;
   address b;
@@ -34,9 +34,10 @@ contract Contract {
 
   function foo(address x, int i) public {
     set1(x, i);
-    // if the execution goes through require(msg.sender == c) (a guard), x and i become trusted.
-    // otherwise, a remain the old trusted value.
-    require(msg.sender == a); // guard
-    selfdestruct(msg.sender); // safe
+    // inside this call, in set5, a and b implicitly depend on i.
+    // if the execution goes through the if branch, the guard require(msg.sender == c) makes x and i trusted.
+    // otherwise, i and x are untrusted, and a is therefore untrusted due to implicit dependency on i.
+    require(msg.sender == a); // not a guard
+    selfdestruct(msg.sender); // vulnerable
   }
 }

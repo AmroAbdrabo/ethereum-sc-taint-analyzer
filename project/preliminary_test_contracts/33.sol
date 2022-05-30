@@ -24,7 +24,7 @@ contract Contract {
   }
 
   function foo() public {
-    require(msg.sender == b); // not a guard due to implicit dependency of b on unsafe_int and i
+    require(msg.sender == b); // not a guard due to implicit dependency of b on unsafe_int
     selfdestruct(msg.sender); // vulnerable
   }
 }
