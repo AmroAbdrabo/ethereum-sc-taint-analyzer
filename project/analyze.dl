@@ -708,12 +708,12 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_imp_t
 
 // Return ctrl transfer 
 // R1.1, for this case we assume we have arrived at a leaf node of a tainted ctrl-flow induced by a tainted if condition
-program_run([executed_blks, to_blk], final_state, args_tainted, state, -1, args_sndr, 0, "", hs+1, new_stack, currhist) :-  // remove implicit flag by banding by -2
-         program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
+program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, 0, "", hs+1, new_stack, currhist) :-  // remove implicit flag by banding by -2
+         program_run(last_blk, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
         ),
-        executed_blks = [prev_exec, last_blk], mustPassThru(imp_blk, last_blk), 
+        mustPassThru(imp_blk, last_blk), 
         return(_, last_blk), stack = [prev_stack, parent_blk], 
         new_stack = prev_stack,  ((!longBlock(parent_blk), to_blk = parent_blk);
         (longBlock(parent_blk), !not_first_store(to_blk, sid, parent_blk), store_block(to_blk, parent, sid))),
@@ -740,12 +740,12 @@ program_run([executed_blks, to_blk], final_state, args_tainted, state, -1, args_
 
 // Return ctrl transfer 
 // R1.2, for this case we assume are NOT at a leaf node of a tainted ctrl-flow induced by a tainted if condition
-program_run([executed_blks, to_blk], final_state, args_tainted, state, -1, args_sndr, final_imp_taint, imp_blk, hs+1, new_stack, currhist) :-  // remove implicit flag by banding by -2
-         program_run(executed_blks, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
+program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_imp_taint, imp_blk, hs+1, new_stack, currhist) :-  // remove implicit flag by banding by -2
+         program_run(last_blk, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
         ),
-        executed_blks = [prev_exec, last_blk], !mustPassThru(imp_blk, last_blk), 
+        !mustPassThru(imp_blk, last_blk), 
         return(_, last_blk), stack = [prev_stack, parent_blk], 
         new_stack = prev_stack,  ((!longBlock(parent_blk), to_blk = parent_blk);
         (longBlock(parent_blk), !not_first_store(to_blk, sid, parent_blk), store_block(to_blk, parent, sid))),
@@ -795,8 +795,8 @@ program_run(executed_blks, sv_tainted, final_arg_state, state, idx, final_args_s
             (is_id_val_taint = 0, arg_bv(bv, arg), final_arg_state = (bnot bv) band args_tainted)  // 24.sol sometimes an argument needs to be cleaned b/c same function is called again with clean variable
         ),
         (   // notice that unlike the is_id_val_taint here, sndr_dep_complete since we want to know if there is a dependency regardless whether msg sender is trusted or not
-            (non_sndr_taint = 0, sndr_dep_complete != 0,  arg_bv(bv, arg), final_args_sndr = bv bor args_sndr); // if the only taint comes from the sndr, then include it in the bit vector
-            ((non_sndr_taint != 0; sndr_dep_complete = 0),  arg_bv(bv, arg), final_args_sndr = (bnot bv) band args_sndr) // o/w remove it from args_sndr flag if there is non-sndr taint or no dependence on sndr
+            (sndr_dep_complete != 0,  arg_bv(bv, arg), final_args_sndr = bv bor args_sndr); // if the only taint comes from the sndr, then include it in the bit vector
+            (sndr_dep_complete = 0,  arg_bv(bv, arg), final_args_sndr = (bnot bv) band args_sndr) // o/w remove it from args_sndr flag if there is non-sndr taint or no dependence on sndr
         ).
 
 //  ******************* END: JUMP LOGIC  *******************
