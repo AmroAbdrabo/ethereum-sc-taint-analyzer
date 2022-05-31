@@ -9,7 +9,7 @@ __pycache__
 # Ignore test-generated files
 *.facts
 *.csv
-
+*.sol
 
 # Mac files
 **/.DS_Store
