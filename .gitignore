@@ -11,5 +11,18 @@ __pycache__
 *.csv
 
 
+
+
+*.sol
+
+
+
+
+
+
+
+
+
+
 # Mac files
 **/.DS_Store
