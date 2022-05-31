@@ -126,20 +126,20 @@ depon_const_info(id) :- const(id, _); (assign(id, orig), depon_const_info(orig))
 depon_const_info(id) :- bop(id, id_lhs, id_rhs, _), depon_const_info(id_lhs), depon_const_info(id_rhs).
 depon_const_info(id) :- uop(id, id_orig, _), depon_const_info(id_orig).  
 
-.decl ssa_depens_complete(stmt: SSA, args: number, sv: number, sndr: number, cnt: number) // the things an SSA depends on
+.decl ssa_depens_complete(stmt: SSA, args: number, sv: number, sndr: number) // the things an SSA depends on
 // Base cases
-ssa_depens_complete(id, 0, 0, 0, 0) :- depon_const_info(id).
-ssa_depens_complete(id, s, 0, 0, 1) :- user_input(id, arg), arg_bv(s, arg). // (id, s, 0 , 0, 1)  id_var = id 
-ssa_depens_complete(id, 0, s, 0, 1) :- load(id, field), sv_bv(s, field).
-ssa_depens_complete(id, 0, 0, 1, 0) :- msgSender(id).
+ssa_depens_complete(id, 0, 0, 0) :- depon_const_info(id).
+ssa_depens_complete(id, s, 0, 0) :- user_input(id, arg), arg_bv(s, arg). // (id, s, 0 , 0, 1)  id_var = id 
+ssa_depens_complete(id, 0, s, 0) :- load(id, field), sv_bv(s, field).
+ssa_depens_complete(id, 0, 0, 1) :- msgSender(id).
 
 //.output ssa_depens_complete
 
 // Tree recursion
-ssa_depens_complete(id, args, sv, sndr, cnt)  :- (assign(id, orig); uop(id, orig, _)), ssa_depens_complete(orig, args, sv, sndr, cnt).
-ssa_depens_complete(id, args_lhs bor args_rhs, sv_lhs bor sv_rhs, sndr_lhs bor sndr_rhs, cnt_lhs + cnt_rhs)  :- bop(id, id_lhs, id_rhs, _), 
-                  ssa_depens_complete(id_lhs, args_lhs, sv_lhs, sndr_lhs, cnt_lhs),  
-                  ssa_depens_complete(id_rhs, args_rhs, sv_rhs, sndr_rhs, cnt_rhs). 
+ssa_depens_complete(id, args, sv, sndr)  :- (assign(id, orig); uop(id, orig, _)), ssa_depens_complete(orig, args, sv, sndr).
+ssa_depens_complete(id, args_lhs bor args_rhs, sv_lhs bor sv_rhs, sndr_lhs bor sndr_rhs)  :- bop(id, id_lhs, id_rhs, _), 
+                  ssa_depens_complete(id_lhs, args_lhs, sv_lhs, sndr_lhs),  
+                  ssa_depens_complete(id_rhs, args_rhs, sv_rhs, sndr_rhs). 
                   // and operation is to ensure no var is taken into account more than once
 
 /// ********************* Start: Store context in block *********************
@@ -153,7 +153,7 @@ sv_bv(s, field) :- s = 2^k, k = to_number(substr(field, 1, strlen(field))), stor
 // Context of store in a block // B00, S02, 016, 016, 1
 .decl block_modifies_sv(blk: Block, sv: Name, state_dependency: number, arg_dependency: number, sndr: number)
 block_modifies_sv(blk, field, state_dep, arg_dep, sndr_dep) :- store(stmt, field, assigned), !longBlock(blk),
-  blockStmt(blk, stmt), ssa_depens_complete(assigned, arg_dep, state_dep, sndr_dep, _). 
+  blockStmt(blk, stmt), ssa_depens_complete(assigned, arg_dep, state_dep, sndr_dep). 
 
 /// ********************* END: Store context in block *********************
 
@@ -166,16 +166,13 @@ block_modifies_sv(blk, field, state_dep, arg_dep, sndr_dep) :- store(stmt, field
 .decl conditioned_block(blk: Block, state_dependency: number, arg_dependency: number, sndr_dep: number)
 // sndr_dep being 0 means that the safe condition can potentially be safe if one of the arguments depends on sndr (and other values it depends on are clean)
 // sndr_dep being 1 means that the safe condition explicitly depends on msg.sender via an S-type SSA.
-conditioned_block(blk, state_dependency, arg_dependency, sd) :- ssa_depens_complete(stmt, arg_dependency, state_dependency, sd, _), branch(_,_, blk,_,_, stmt).// blockStmt(blk,stmt). block with safe guard condition need not have the var_cond defined inside the block (example: T0:: A02)
-//conditioned_block(blk, state_dependency, arg_dependency, 1) :- ssa_depens_complete(stmt, arg_dependency, state_dependency, 1, _), branch(_,_, blk,_,_, stmt).
+conditioned_block(blk, state_dependency, arg_dependency, sd) :- ssa_depens_complete(stmt, arg_dependency, state_dependency, sd), branch(_,_, blk,_,_, stmt).// blockStmt(blk,stmt). block with safe guard condition need not have the var_cond defined inside the block (example: T0:: A02)
 
 .decl unconditioned_block(blk: Block)
 // Captures blocks which are not guarded (as in those that do have a condition that does NOT depend on msg.sender, and also those that do not have a condition alas)
 unconditioned_block(blk) :- block(blk), !branch(_, _, blk, _, _, _). // !conditioned_block(blk, _, _). // NB: a block can also be "unguarded" if some of its dependencies become tainted
 
 // Conditioned but not guarded (i.e. has branch which has no dependence on msg.sender)
-//.decl unguarded_block(blk: Block, args: number, sv: number)
-//unguarded_block(blk, args, sv) :- branch(_, _, blk, _, _, stmt), ssa_depens_complete(stmt, args, sv, 0, _).
 
 // ***************** argument transfer *****************
 .decl blockFollowsClosed(start: Block, fin: Block)
@@ -350,7 +347,7 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
         program_run(last_blk, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, imp_blk, hs, stack, prehist),
         blockFollows(last_blk, to_blk),
         arg_flow(arg, id_val, idx, last_blk, to_blk), idx = last_arg+1, // push arguments in increasing order
-        ssa_depens_complete(id_val, args_val, sv_val, sndr_val, cnt_val), 
+        ssa_depens_complete(id_val, args_val, sv_val, sndr_val), 
         // NEW: if you look at the graph of twelve-one.sol A01 is tainted b/c depended impl. on tainted value
         // The reason twelve-one.sol was passing thus far, was b/c our state machine treated the argument A01 as tainted for a reason I still need to figure out
         // If we are transferring a value from an antiguarded state, we propagate the taint on the argument we are transferring
@@ -652,7 +649,7 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
             (arg_flow(arg, id_val, idx, last_blk, to_blk), !longBlock(to_blk));
             (arg_flow(arg, id_val, idx, last_blk, child), first_mini_blk(to_blk, child))
         ), 
-        ssa_depens_complete(id_val, args_val, sv_val, sndr_val, cnt_val),
+        ssa_depens_complete(id_val, args_val, sv_val, sndr_val),
         // Implicitly taint everything stemming from a anti-guarded state
         
         sndr_dep_complete = sndr_val bor (args_val band args_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
@@ -778,7 +775,7 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
         return(_, last_blk), stack = [prev_stack, possible_parent_blk], 
         ((longBlock(possible_parent_blk), first_mini_blk(possible_parent_blk, to_blk));(!longBlock(possible_parent_blk), to_blk = possible_parent_blk)),
         arg_flow(arg, id_val, idx, last_blk, to_blk),
-        idx = last_arg+1 ,ssa_depens_complete(id_val, args_val, sv_val, sndr_val, cnt_val),
+        idx = last_arg+1 ,ssa_depens_complete(id_val, args_val, sv_val, sndr_val),
         // Fix for twenty.sol, it is possible that the new argument is tainted by msg.sendr via another argument which is itself (only) tainted by msg.sender
        
         sndr_dep_complete = sndr_val bor (args_val band args_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
@@ -847,7 +844,7 @@ program_run(last_blk, sv_tainted, args_tainted bor arg_taint, 0, idx, args_sndr,
 
 
 tainted_sinks("id"), debug_info(last_blk, sv_tainted, args_tainted, state, la, args_sndr, imp_taint, imp_blk, hs,stack, hist) :-selfdestruct(id, addr), program_run(last_blk, sv_tainted, args_tainted, state, la, args_sndr, imp_taint,imp_blk,  hs,stack, hist), blockStmt(last_blk, id),
-                    ssa_depens_complete(addr, args_dep, sv_dep, sndr, cnt), 
+                    ssa_depens_complete(addr, args_dep, sv_dep, sndr), 
                     has_tainted_arg = args_dep band args_tainted, has_tainted_sv = sv_dep band sv_tainted, 
                     (
                         (is_tainted = has_tainted_arg bor has_tainted_sv bor sndr bor (args_dep band args_sndr),(state=0; state=1));
