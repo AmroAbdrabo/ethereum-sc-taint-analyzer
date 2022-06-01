@@ -113,7 +113,7 @@ user_input(id, id) :- argument(id,_,_).
 user_input(id, arg) :- assign(id, orig), user_input(orig, arg).
 user_input(id, arg) :- uop(id, orig, _), user_input(orig, arg).
 
-// Given that arguments are used only once we can treat similarly to fields. A01 -> 0022, A00 -> 0001, A02 
+// Given that arguments are used only once we can treat similarly to fields. A01 -> 0028, A00 -> 0001, A02 
 .decl arg_bv(state: number, id_arg: SSA)
 arg_bv(s, id) :- s = 2^k, k = to_number(substr(id, 1, strlen(id))), argument(id, _, _).
 
@@ -150,7 +150,7 @@ sv_bv(s, field) :- s = 2^k, k = to_number(substr(field, 1, strlen(field))), stor
 
 .type BlkList = [next: BlkList, blk: Block]
 
-// Context of store in a block // B00, S02, 022, 022, 1
+// Context of store in a block // B00, S02, 028, 028, 1
 .decl block_modifies_sv(blk: Block, sv: Name, state_dependency: number, arg_dependency: number, sndr: number)
 block_modifies_sv(blk, field, state_dep, arg_dep, sndr_dep) :- store(stmt, field, assigned), !longBlock(blk),
   blockStmt(blk, stmt), ssa_depens_complete(assigned, arg_dep, state_dep, sndr_dep). 
@@ -330,8 +330,8 @@ mustPassThru(a, b):- branch(_, _, a, _, _, _), !doesNotPassThru(a, b), blockFoll
 
 // State 0: unguarded -  00
 // State 1: antiguarded - 01
-// State 2: privileged user (has untainted user input, but can act as a confused deputy-- see 22.sol) - 22
-// State 3: privileged user running in antiguarded state (i.e. first bit determines whether we are in anti-guarded state or not. - 22
+// State 2: privileged user (has untainted user input, but can act as a confused deputy-- see 28.sol) - 28
+// State 3: privileged user running in antiguarded state (i.e. first bit determines whether we are in anti-guarded state or not. - 28
 // Make sure to remove anti-guarded state on return (i.e. branch dependency finishes) 
 
 // *********************** START: Normal ctrl flow (i.e. any ctrl flow other than JMP) *************************
@@ -425,7 +425,7 @@ program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, final_i
                 )
             )
         ),
-        hs < 22.
+        hs < 28.
 
 // Case 1.1: antiguarded unprivileged state 
 // This case happens if we are currently in the anti-guarded state and then encounter the end of the ctrl flow induced by the tainted if-condition.
@@ -473,7 +473,7 @@ program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, 0, "", hs+1, st
                 )
             )
         ),
-        hs < 22.
+        hs < 28.
 
 
 // Case 1.2: antiguarded unprivileged state 
@@ -520,7 +520,7 @@ program_run(to_blk, final_state, args_tainted, 1, -1, args_sndr, final_imp_taint
                 )
             )
         ),
-        hs < 22.
+        hs < 28.
 
 
 // Case 2: privileged user (no antiguard)
@@ -569,7 +569,7 @@ program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, final_i
                 )
             )
         ),
-        hs < 22.
+        hs < 28.
 
 // Case 3.1: antiguarded privilege
 // This case happens if we are currently in the anti-guarded state and then encounter the end of the ctrl flow induced by the tainted if-condition.
@@ -602,7 +602,7 @@ program_run(to_blk, final_state, args_tainted, 2, -1, args_sndr, 0, "", hs+1, st
                 !doesModify(to_blk), final_state = sv_tainted bor imp_taint
             )
         ), 
-        hs < 22.
+        hs < 28.
 
 // Case 3.2: antiguarded privilege
 // This case happens if we are currently in the anti-guarded state but do NOT encounter the end of the ctrl flow induced by the tainted if-condition 
@@ -633,7 +633,7 @@ program_run(to_blk, final_state, args_tainted, 3, -1, args_sndr, final_imp_taint
                 !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = imp_taint
             )
         ), 
-        hs < 22.
+        hs < 28.
 
 
 //.output blockFollows
@@ -697,7 +697,7 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_imp_t
                 !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = imp_taint
             )
          ),
-         hs < 22.
+         hs < 28.
 
 
 // Return ctrl transfer 
@@ -730,7 +730,7 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, 0, "", hs+1
                 !doesModify(to_blk), final_state = sv_tainted bor imp_taint
             )
         ),
-        hs < 22.
+        hs < 28.
 
 // Return ctrl transfer 
 // R1.2, for this case we assume are NOT at a leaf node of a tainted ctrl-flow induced by a tainted if condition
@@ -763,12 +763,12 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_imp_t
                 !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = imp_taint 
             )
         ),
-        hs < 22.
+        hs < 28.
 
 //.output mustPassThru
 // Return argument transfer
 program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, imp_taint, imp_blk, hs, stack) :- 
-        program_run(last_blk, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, imp_blk, hs, stack),   // 00022   clean it --> 00001 but this DOES NOT MEAN 00022 is gone
+        program_run(last_blk, sv_tainted, args_tainted, state, last_arg, args_sndr, imp_taint, imp_blk, hs, stack),   // 00028   clean it --> 00001 but this DOES NOT MEAN 00028 is gone
         return(_, last_blk), stack = [prev_stack, possible_parent_blk], 
         ((longBlock(possible_parent_blk), first_mini_blk(possible_parent_blk, to_blk));(!longBlock(possible_parent_blk), to_blk = possible_parent_blk)),
         arg_flow(arg, id_val, idx, last_blk, to_blk),
@@ -808,7 +808,7 @@ program_run(to_blk, sv_tainted bor imp_taint, 0, 0, -1, 0, 0, "", hs+1, stack) :
     return(_, last_blk), stack = nil, arg_setup_blk(to_blk),
     !hasSelfDestruct(last_blk), 
     sv_tainted != 0,
-    hs < 22. 
+    hs < 28. 
 
 // return to privileged user from unprivileged user return (privileged user does not introduce user input taint -> no need for arg_setup_blk)
 program_run(to_blk, sv_tainted bor imp_taint, 0, 2, -1, 0, 0, "", hs+1, nil) :- 
@@ -821,7 +821,7 @@ program_run(to_blk, sv_tainted bor imp_taint, 0, 2, -1, 0, 0, "", hs+1, nil) :-
     ),
     state < 2,
     sv_tainted != 0,
-    hs > 1, hs < 22. 
+    hs > 1, hs < 28. 
 
 // setup arguments inside argument setup block
 program_run(last_blk, sv_tainted, args_tainted bor arg_taint, 0, idx, args_sndr, 0, "", hs, stack) :- 
