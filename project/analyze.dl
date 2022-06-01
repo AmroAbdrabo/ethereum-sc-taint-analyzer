@@ -412,7 +412,7 @@ program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, final_s
             );
             (
                 // Since we were at state 0, no matter whether we transitioned to state 1 or 0 again, then the implicit taint will remain 0 under lack of modifications 
-                !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = 0
+                !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = 0, final_sndr = sv_sndr
             )
         ), 
         (
@@ -467,7 +467,7 @@ program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, final_sndr,  0,
                 )
             );
             (
-                !doesModify(to_blk), final_state = sv_tainted bor imp_taint
+                !doesModify(to_blk), final_state = sv_tainted bor imp_taint, final_sndr = sv_sndr
             )
         ), 
         (
@@ -520,7 +520,7 @@ program_run(to_blk, final_state, args_tainted, 1, -1, args_sndr, final_sndr, fin
                 final_imp_taint = imp_taint bor bv
             );
             (
-                !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = imp_taint
+                !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = imp_taint, final_sndr = sv_sndr
             )
         ), 
         (
@@ -721,7 +721,7 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr,
             );
             // block does not modify sv 
             (
-                !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = imp_taint
+                !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = imp_taint, final_sndr = sv_sndr
             )
          ), currhist = cat(cat(prehist, "-J->"), to_blk),
          hs < 16.
@@ -760,7 +760,7 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr,
             );
             // block does not modify sv 
             (
-                !doesModify(to_blk), final_state = sv_tainted bor imp_taint
+                !doesModify(to_blk), final_state = sv_tainted bor imp_taint, final_sndr = sv_sndr
             )
         ), currhist = cat(cat(prehist, "-R->"), to_blk),
         hs < 16.
@@ -799,7 +799,7 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr,
             );
             // block does not modify sv 
             (
-                !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = imp_taint 
+                !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = imp_taint, final_sndr = sv_sndr 
             )
         ), currhist = cat(cat(prehist, "-R->"), to_blk),
         hs < 16.
@@ -821,9 +821,10 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
         arg_taint_dep = args_val band (args_tainted band (bnot args_sndr)),
         sv_taint_dep = sv_val band sv_tainted, 
         is_imp_tainted = -1*(state band 1),
-        arg_bv(bv, arg)
+        
         non_sndr_taint = arg_taint_dep bor sv_taint_dep bor is_imp_tainted, // since we remain here inside the context of the if statement, consts are still clean (see twelve)
         is_id_val_taint = non_sndr_taint bor sndr_val_comp, // sndr_val_comp is equiv. to sndr_dep_complete only if untrusted senter
+        arg_bv(bv, arg),
         (
             (is_id_val_taint != 0, final_arg_state = bv bor args_tainted);
             (is_id_val_taint = 0, final_arg_state = (bnot bv) band args_tainted)  // 24.sol sometimes an argument needs to be cleaned b/c same function is called again with clean variable
