@@ -364,7 +364,7 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
         sv_taint_dep = sv_val band sv_tainted,
 
         // Implicit taint dependency 
-        is_imp_tainted = -1*(state band 1),
+        is_imp_tainted = -1*(state band 1), // TODO mulitply by y where y is 1 if it is a point of convergence, 0 o/w 
 
         non_sndr_taint = arg_taint_dep bor sv_taint_dep bor is_imp_tainted, // since we remain here inside the context of the if statement, consts are still clean (see twelve)
         is_id_val_taint = non_sndr_taint bor sndr_val_comp, // sndr_val_comp is equiv. to sndr_dep_complete only if untrusted senter
@@ -439,6 +439,7 @@ program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, final_s
 // Since we are in the unprivileged state, we need to make sure there is no guard 
 // As we are moving to a node of convergence (of all tainted if branches), the state will be normal again and the imp_taint vars will all be reset
 // final_imp_taint = 0, final_imp_blk = "", state_end = 0
+// TODO: transition to state 0 even if current state is 5 (only allow to get thru guard if current state is 5)
 program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, final_sndr,  0, "", hs+1, stack, currhist) :- 
         program_run(last_blk, sv_tainted, args_tainted, 1, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
@@ -490,6 +491,7 @@ program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, final_sndr,  0,
 
 // Case 1.2: antiguarded unprivileged state 
 // This case happens if we are currently in the anti-guarded state but do NOT encounter the end of the ctrl flow induced by the tainted if-condition 
+// TODO: If there is a guard to state 5 instead of 1
 program_run(to_blk, final_state, args_tainted, 1, -1, args_sndr, final_sndr, final_imp_taint, imp_blk, hs+1, stack, currhist) :- 
         program_run(last_blk, sv_tainted, args_tainted, 1, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
@@ -675,7 +677,7 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
 
         arg_taint_dep = args_val band (args_tainted band (bnot args_sndr)),
         sv_taint_dep = sv_val band sv_tainted, 
-        is_imp_tainted = -1*(state band 1),
+        is_imp_tainted = -1*(state band 1),  // TODO Remove this 
         non_sndr_taint = arg_taint_dep bor sv_taint_dep bor is_imp_tainted, // since we remain here inside the context of the if statement, consts are still clean (see twelve)
         is_id_val_taint = non_sndr_taint bor sndr_val_comp, // sndr_val_comp is equiv. to sndr_dep_complete only if untrusted senter
         arg_bv(bv, arg),
@@ -696,8 +698,11 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr,
             !num_args(last_blk, to_blk, _) // either the block we're flowing into does not take arguments or the block we're flowing out of does not provide arguments
         ),
          jump(_, last_blk, parent_blk, cont_blk), !arg_setup_blk(last_blk),
-         new_stack = [stack, cont_blk],  ((!longBlock(parent_blk), to_blk = parent_blk);
-         (longBlock(parent_blk), !not_first_store(to_blk, sid, parent_blk), store_block(to_blk, parent, sid))),
+         new_stack = [stack, cont_blk],  
+         (
+            (!longBlock(parent_blk), to_blk = parent_blk);
+            first_mini_blk(parent_blk, to_blk)
+         ),
          (
             (
                 block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),
@@ -729,6 +734,7 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr,
 
 // Return ctrl transfer 
 // R1.1, for this case we assume we have arrived at a leaf node of a tainted ctrl-flow induced by a tainted if condition
+// TODO: new state should be banded by 3 (0b11) to remove ag priv
 program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr, 0, "", hs+1, new_stack, currhist) :-  // remove implicit flag by banding by -2
          program_run(last_blk, sv_tainted, args_tainted, state, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
@@ -736,8 +742,11 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr,
         ),
         mustPassThru(imp_blk, last_blk), 
         return(_, last_blk), stack = [prev_stack, parent_blk], 
-        new_stack = prev_stack,  ((!longBlock(parent_blk), to_blk = parent_blk);
-        (longBlock(parent_blk), !not_first_store(to_blk, sid, parent_blk), store_block(to_blk, parent, sid))),
+        new_stack = prev_stack,  
+        (
+            (!longBlock(parent_blk), to_blk = parent_blk);
+            first_mini_blk(parent_blk, to_blk)
+        ),
         (
             (
                 block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),
@@ -774,8 +783,11 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr,
         ),
         !mustPassThru(imp_blk, last_blk), 
         return(_, last_blk), stack = [prev_stack, parent_blk], 
-        new_stack = prev_stack,  ((!longBlock(parent_blk), to_blk = parent_blk);
-        (longBlock(parent_blk), !not_first_store(to_blk, sid, parent_blk), store_block(to_blk, parent, sid))),
+        new_stack = prev_stack,  
+        (
+            (!longBlock(parent_blk), to_blk = parent_blk);
+            first_mini_blk(parent_blk, to_blk)
+        ),
         (
             (
                 block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),
@@ -820,7 +832,7 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
 
         arg_taint_dep = args_val band (args_tainted band (bnot args_sndr)),
         sv_taint_dep = sv_val band sv_tainted, 
-        is_imp_tainted = -1*(state band 1),
+        is_imp_tainted = -1*(state band 1), // TODO mulitply by y where y is 1 if it is a point of convergence, 0 o/w
         
         non_sndr_taint = arg_taint_dep bor sv_taint_dep bor is_imp_tainted, // since we remain here inside the context of the if statement, consts are still clean (see twelve)
         is_id_val_taint = non_sndr_taint bor sndr_val_comp, // sndr_val_comp is equiv. to sndr_dep_complete only if untrusted senter
