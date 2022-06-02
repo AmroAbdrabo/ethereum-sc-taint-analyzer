@@ -421,9 +421,9 @@ program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, final_s
                 conditioned_block(last_blk, guard_sv_dep, guard_arg_dep, guard_sndr_dep),
                 (
                     guard_sndr_dep_comp = guard_sndr_dep bor (args_sndr band guard_arg_dep),
-                    args_tainted_cond = guard_arg_dep band args_tainted, 
-                    sv_tainted_cond   =  guard_sv_dep band sv_tainted,
-                    is_tainted = (args_tainted_cond band (bnot args_sndr)) bor sv_tainted_cond, // For conditionals, we examine taint coming only from non-sndr sources? 
+                    args_tainted_cond = (guard_arg_dep band args_tainted) band (bnot args_sndr), 
+                    sv_tainted_cond   = (guard_sv_dep band sv_tainted) band (bnot sv_sndr),
+                    is_tainted = args_tainted_cond bor sv_tainted_cond, // For conditionals, we examine taint coming only from non-sndr sources? 
                     (   
                         (is_tainted = 0, guard_sndr_dep_comp = 0, state_end = 0, final_imp_blk = ""); // no taint then continue onto normal unguarded state 
                         (is_tainted != 0, state_end = 1, final_imp_blk = last_blk) // o/w continue to antiguarded state
@@ -477,9 +477,9 @@ program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, final_sndr,  0,
                 conditioned_block(last_blk, guard_sv_dep, guard_arg_dep, guard_sndr_dep),
                 (
                     guard_sndr_dep_comp = guard_sndr_dep bor (args_sndr band guard_arg_dep), 
-                    args_tainted_cond = guard_arg_dep band args_tainted, 
-                    sv_tainted_cond   =  guard_sv_dep band sv_tainted,
-                    is_tainted = (args_tainted_cond band (bnot args_sndr)) bor sv_tainted_cond, // For conditionals, we examine taint coming only from non-sndr sources? 
+                    args_tainted_cond = (guard_arg_dep band args_tainted) band (bnot args_sndr), 
+                    sv_tainted_cond   = (guard_sv_dep band sv_tainted) band (bnot sv_sndr),
+                    is_tainted = args_tainted_cond bor sv_tainted_cond, // For conditionals, we examine taint coming only from non-sndr sources? 
                     (is_tainted != 0; guard_sndr_dep_comp = 0) // To not be a guard, either there is NO dep. on sndr or there is a taint from non-sndr sources
                 )
             )
@@ -530,9 +530,9 @@ program_run(to_blk, final_state, args_tainted, 1, -1, args_sndr, final_sndr, fin
                 conditioned_block(last_blk, guard_sv_dep, guard_arg_dep, guard_sndr_dep),
                 (
                     guard_sndr_dep_comp = guard_sndr_dep bor (args_sndr band guard_arg_dep), 
-                    args_tainted_cond = guard_arg_dep band args_tainted, 
-                    sv_tainted_cond   =  guard_sv_dep band sv_tainted,
-                    is_tainted = (args_tainted_cond band (bnot args_sndr)) bor sv_tainted_cond, // For conditionals, we examine taint coming only from non-sndr sources? 
+                    args_tainted_cond = (guard_arg_dep band args_tainted) band (bnot args_sndr), 
+                    sv_tainted_cond   = (guard_sv_dep band sv_tainted) band (bnot sv_sndr),
+                    is_tainted = args_tainted_cond bor sv_tainted_cond, // For conditionals, we examine taint coming only from non-sndr sources? 
                     (is_tainted != 0; guard_sndr_dep_comp = 0) // To not be a guard, either there is NO dep. on sndr or there is a taint from non-sndr sources
                 )
             )
@@ -576,9 +576,9 @@ program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, sv_sndr
                 conditioned_block(last_blk, guard_sv_dep, guard_arg_dep, guard_sndr_dep),
                 (
                     guard_sndr_dep_comp = guard_sndr_dep bor (args_sndr band guard_arg_dep),
-                    args_tainted_cond = guard_arg_dep band args_tainted, 
-                    sv_tainted_cond   =  guard_sv_dep band sv_tainted,
-                    is_tainted = (args_tainted_cond band (bnot args_sndr)) bor sv_tainted_cond, // For conditionals, we examine taint coming only from non-sndr sources? 
+                    args_tainted_cond = (guard_arg_dep band args_tainted) band (bnot args_sndr), 
+                    sv_tainted_cond   = (guard_sv_dep band sv_tainted) band (bnot sv_sndr),
+                    is_tainted = args_tainted_cond bor sv_tainted_cond, // For conditionals, we examine taint coming only from non-sndr sources? 
                     (
                         (is_tainted != 0, state_end = 3, final_imp_blk = last_blk); // If yes, then next state is antiguarded (o/w the next state can only be accessed by priv'd user since it is guarded)
                         (is_tainted = 0, state_end = 2, final_imp_blk = "")
