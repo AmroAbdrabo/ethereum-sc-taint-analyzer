@@ -470,7 +470,7 @@ program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, final_sndr,  0,
                 !doesModify(to_blk), final_state = sv_tainted bor imp_taint, final_sndr = sv_sndr
             )
         ), 
-        (
+        /*(
             // Make sure there is no guard at last_blk preventing ctrl-flow from passing to the to_blk
             unconditioned_block(last_blk);
             (   
@@ -483,7 +483,7 @@ program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, final_sndr,  0,
                     (is_tainted != 0; guard_sndr_dep_comp = 0) // To not be a guard, either there is NO dep. on sndr or there is a taint from non-sndr sources
                 )
             )
-        ),
+        ),*/
         currhist = cat(cat(prehist, ","), to_blk),
         hs < 16.
 
@@ -523,7 +523,7 @@ program_run(to_blk, final_state, args_tainted, 1, -1, args_sndr, final_sndr, fin
                 !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = imp_taint, final_sndr = sv_sndr
             )
         ), 
-        (
+        /*(
             // Make sure there is no guard at last_blk preventing ctrl-flow from passing to the to_blk
             unconditioned_block(last_blk);
             (   
@@ -536,7 +536,7 @@ program_run(to_blk, final_state, args_tainted, 1, -1, args_sndr, final_sndr, fin
                     (is_tainted != 0; guard_sndr_dep_comp = 0) // To not be a guard, either there is NO dep. on sndr or there is a taint from non-sndr sources
                 )
             )
-        ),
+        ),*/
         currhist = cat(cat(prehist, ","), to_blk),
         hs < 16.
 
