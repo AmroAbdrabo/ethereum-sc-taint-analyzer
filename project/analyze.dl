@@ -554,9 +554,7 @@ program_run(to_blk, final_state, args_tainted, new_state, -1, args_sndr, final_s
                     (
                         (
                             (is_tainted != 0; guard_sndr_dep_comp = 0), new_state = 1
-                        ) // To not be a guard, either there is NO dep. on sndr or there is a taint from non-sndr sources
-                    );
-                    (
+                        ); // To not be a guard, either there is NO dep. on sndr or there is a taint from non-sndr sources
                         (
                             (is_tainted = 0, guard_sndr_dep_comp != 0), new_state = 5
                         )
