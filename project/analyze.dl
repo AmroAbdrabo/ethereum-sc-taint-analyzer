@@ -100,8 +100,8 @@ msgSender(id) :-  assign(id, orig), msgSender(orig).
 msgSender(id) :-  uop(id, orig, _), msgSender(orig).
 
 // Transitively close constants. TODO: include as const if it is a bop or uop on constants 
-const(id, value) :- assign(id, orig), const(orig, value).
-const(id, value) :- uop(id, orig, _), const(orig, value).
+//const(id, value) :- assign(id, orig), const(orig, value).
+//const(id, value) :- uop(id, orig, _), const(orig, value).
 
 // Transitively close load
 load(id, field) :-  assign(id, orig), load(orig, field).
@@ -122,7 +122,7 @@ arg_cnt(cnt) :- cnt = count:{arg_bv(_,_)}.
 
 // Check if something depends only on constants
 .decl depon_const_info(id: SSA)
-depon_const_info(id) :- const(id, _); (assign(id, orig), depon_const_info(orig)).
+depon_const_info(id) :- const(id, _); ((assign(id, orig);uop(id, orig, _)), depon_const_info(orig)).
 depon_const_info(id) :- bop(id, id_lhs, id_rhs, _), depon_const_info(id_lhs), depon_const_info(id_rhs).
 depon_const_info(id) :- uop(id, id_orig, _), depon_const_info(id_orig).  
 
@@ -317,13 +317,18 @@ doesModify(blk) :- block_modifies_sv(blk, _, _, _, _).
 .decl leaf_node(x: Block)
 leaf_node(x) :- return(_, x); revert(_, x).
 
-// TODO: include jump(a, b, cont) -> blockFollow(a, cont)
+// TODO (done): include jump(a, b, cont) -> blockFollow(a, cont)
+.decl blockFPT(a: Block, b: Block)
+blockFPT(a, b) :- blockFollowsClosed(a, b).
+blockFPT(a, b) :-  jump(_, a, _, b).
+blockFPT(a, c) :- blockFPT(a, b), blockFPT(b, c).
+
 .decl doesNotPassThru(a: Block, b: Block)   // direct children of A do not converge onto B or do not have a leaf node at B
-doesNotPassThru(a, b) :- blockFollows(a,c), blockFollows(a,b), c != b, !leaf_node(b), !leaf_node(c).
-doesNotPassThru(a, c):- block(a), block(c), !blockFollowsClosed(a, c), a!=c, !leaf_node(c), !leaf_node(a).
-doesNotPassThru(a, c) :- blockFollows(a,b),  doesNotPassThru(b, c), a!=c.
+doesNotPassThru(a, b) :- (blockFollows(a,c); jump(_, a, _, c)), (blockFollows(a,b);jump(_, a, _, b)), c != b, !leaf_node(b), !leaf_node(c).
+doesNotPassThru(a, c):- block(a), block(c), !blockFPT(a, c), a!=c, !leaf_node(c), !leaf_node(a).
+doesNotPassThru(a, c) :- blockFPT(a,b),  doesNotPassThru(b, c), a!=c.
 .decl mustPassThru(a: Block, b: Block) // signifies that the direct children of A must either pass through B or will be terminated at a leaf, B, of A 
-mustPassThru(a, b):- branch(_, _, a, _, _, _), !doesNotPassThru(a, b), blockFollowsClosed(a,b), a!=b.
+mustPassThru(a, b):- branch(_, _, a, _, _, _), !doesNotPassThru(a, b), blockFPT(a,b), a!=b.
 //mustPassThru("", ""). // sentinel block
 
 // If an attacker can execute one branching from the conditioned block imp_blk (i.e. at least one branching of imp_blk is unguarded)
