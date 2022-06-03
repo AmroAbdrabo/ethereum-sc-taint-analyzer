@@ -7,7 +7,7 @@ contract Contract {
   address unsafe_addr;
   int safe_int;
   int unsafe_int;
-  
+  bool x;
 
   function set_unsafe_addr(address a) public {
     unsafe_addr = a;
@@ -24,7 +24,7 @@ contract Contract {
   }
 
   function check() public returns(bool) {
-    bool x; // TODO: test with x as a field also
+    //  TODO: test with x as a field also
     if (safe_int > 5) {
       x= (safe_int == safe_int);
     } else {

@@ -113,7 +113,7 @@ user_input(id, id) :- argument(id,_,_).
 user_input(id, arg) :- assign(id, orig), user_input(orig, arg).
 user_input(id, arg) :- uop(id, orig, _), user_input(orig, arg).
 
-// Given that arguments are used only once we can treat similarly to fields. A01 -> 0016, A00 -> 0001, A02 
+// Given that arguments are used only once we can treat similarly to fields. A01 -> 008, A00 -> 0001, A02 
 .decl arg_bv(state: number, id_arg: SSA)
 arg_bv(s, id) :- s = 2^k, k = to_number(substr(id, 1, strlen(id))), argument(id, _, _).
 
@@ -150,7 +150,7 @@ sv_bv(s, field) :- s = 2^k, k = to_number(substr(field, 1, strlen(field))), stor
 
 .type BlkList = [next: BlkList, blk: Block]
 
-// Context of store in a block // B00, S02, 016, 016, 1
+// Context of store in a block // B00, S02, 08, 08, 1
 .decl block_modifies_sv(blk: Block, sv: Name, state_dependency: number, arg_dependency: number, sndr: number)
 block_modifies_sv(blk, field, state_dep, arg_dep, sndr_dep) :- store(stmt, field, assigned), !longBlock(blk),
   blockStmt(blk, stmt), ssa_depens_complete(assigned, arg_dep, state_dep, sndr_dep). 
@@ -339,8 +339,8 @@ mustPassThru(a, b):- branch(_, _, a, _, _, _), !doesNotPassThru(a, b), blockFPT(
 
 // State 0: unguarded -  00
 // State 1: antiguarded - 01
-// State 2: privileged user (has untainted user input, but can act as a confused deputy-- see 16.sol) - 16
-// State 3: privileged user running in antiguarded state (i.e. first bit determines whether we are in anti-guarded state or not. - 16
+// State 2: privileged user (has untainted user input, but can act as a confused deputy-- see 8.sol) - 8
+// State 3: privileged user running in antiguarded state (i.e. first bit determines whether we are in anti-guarded state or not. - 8
 // Make sure to remove anti-guarded state on return (i.e. branch dependency finishes) 
 
 // *********************** START: Normal ctrl flow (i.e. any ctrl flow other than JMP) *************************
@@ -362,7 +362,7 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
         // If we are transferring a value from an antiguarded state, we propagate the taint on the argument we are transferring
 
         // Tainted msg.sender dependency 
-        sndr_dep_complete = sndr_val bor (args_val band args_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
+        sndr_dep_complete = sndr_val bor ((args_val band args_sndr) bor (sv_val band sv_sndr)), // there could be a direct dependency on msg.sender or indirect via an argument
         safe_sndr = -(state band 3)/2, // wil be 0b1...1 if state > 1 i.e. privileged. We only take the first two bits due to untrusted state 5 (0b101)        
         sndr_val_comp = sndr_dep_complete band (bnot safe_sndr),
 
@@ -370,7 +370,7 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
         arg_taint_dep = args_val band (args_tainted band (bnot args_sndr)),
         
         // Tainted SV dependency
-        sv_taint_dep = sv_val band sv_tainted,
+        sv_taint_dep = sv_val band (sv_tainted band (bnot sv_sndr)),
 
         // Implicit taint dependency 
         (
@@ -445,7 +445,7 @@ program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, final_s
             )
         ),
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 16.
+        hs < 8.
 
 // Case 1.1: antiguarded unprivileged state 
 // This case happens if we are currently in the anti-guarded state and then encounter the end of the ctrl flow induced by the tainted if-condition.
@@ -507,7 +507,7 @@ program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, final_sndr,  0,
             )
         ),
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 16.
+        hs < 8.
 
 
 // Case 1.2: antiguarded unprivileged state 
@@ -568,7 +568,7 @@ program_run(to_blk, final_state, args_tainted, new_state, -1, args_sndr, final_s
             )
         ),
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 16.
+        hs < 8.
 
 
 // Case 2: privileged user (no antiguard)
@@ -617,7 +617,7 @@ program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, sv_sndr
             )
         ),
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 16.
+        hs < 8.
 
 // Case 3.1: antiguarded privilege
 // This case happens if we are currently in the anti-guarded state and then encounter the end of the ctrl flow induced by the tainted if-condition.
@@ -651,7 +651,7 @@ program_run(to_blk, final_state, args_tainted, 2, -1, args_sndr, sv_sndr, 0, "",
             )
         ), 
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 16.
+        hs < 8.
 
 // Case 3.2: antiguarded privilege
 // This case happens if we are currently in the anti-guarded state but do NOT encounter the end of the ctrl flow induced by the tainted if-condition 
@@ -683,7 +683,7 @@ program_run(to_blk, final_state, args_tainted, 3, -1, args_sndr, sv_sndr, final_
             )
         ), 
         currhist = cat(cat(prehist, ","), to_blk),
-        hs < 16.
+        hs < 8.
 
 
 //.output blockFollows
@@ -699,12 +699,12 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
         ssa_depens_complete(id_val, args_val, sv_val, sndr_val),
         // Implicitly taint everything stemming from a anti-guarded state
         
-        sndr_dep_complete = sndr_val bor (args_val band args_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
+        sndr_dep_complete = sndr_val bor ((args_val band args_sndr) bor (sv_val band sv_sndr)), // there could be a direct dependency on msg.sender or indirect via an argument
         safe_sndr = -(state band 3)/2, // wil be 0b1...1 if state > 1 i.e. privileged. We only take the first two bits due to untrusted state 5 (0b101)          
         sndr_val_comp = sndr_dep_complete band (bnot safe_sndr),
 
         arg_taint_dep = args_val band (args_tainted band (bnot args_sndr)),
-        sv_taint_dep = sv_val band sv_tainted, 
+        sv_taint_dep = sv_val band (sv_tainted band (bnot sv_sndr)), 
         //is_imp_tainted = -1*(state band 1),  // TODO (done) Remove this 
         non_sndr_taint = arg_taint_dep bor sv_taint_dep, // since we remain here inside the context of the if statement, consts are still clean (see twelve)
         is_id_val_taint = non_sndr_taint bor sndr_val_comp, // sndr_val_comp is equiv. to sndr_dep_complete only if untrusted senter
@@ -757,7 +757,7 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr,
                 !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = imp_taint, final_sndr = sv_sndr
             )
          ), currhist = cat(cat(prehist, "-J->"), to_blk),
-         hs < 16.
+         hs < 8.
 
 
 // Return ctrl transfer 
@@ -800,7 +800,7 @@ program_run(to_blk, final_state, args_tainted, state band 2, -1, args_sndr, fina
                 !doesModify(to_blk), final_state = sv_tainted bor imp_taint, final_sndr = sv_sndr
             )
         ), currhist = cat(cat(prehist, "-R->"), to_blk),
-        hs < 16.
+        hs < 8.
 
 // Return ctrl transfer 
 // R1.2, for this case we assume are NOT at a leaf node of a tainted ctrl-flow induced by a tainted if condition
@@ -842,24 +842,24 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr,
                 !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = imp_taint, final_sndr = sv_sndr 
             )
         ), currhist = cat(cat(prehist, "-R->"), to_blk),
-        hs < 16.
+        hs < 8.
 
 //.output mustPassThru
 // Return argument transfer
 program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack, prehist) :- 
-        program_run(last_blk, sv_tainted, args_tainted, state, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack, prehist),   // 00016   clean it --> 00001 but this DOES NOT MEAN 00016 is gone
+        program_run(last_blk, sv_tainted, args_tainted, state, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack, prehist),   // 0008   clean it --> 00001 but this DOES NOT MEAN 0008 is gone
         return(_, last_blk), stack = [prev_stack, possible_parent_blk], 
         ((longBlock(possible_parent_blk), first_mini_blk(possible_parent_blk, to_blk));(!longBlock(possible_parent_blk), to_blk = possible_parent_blk)),
         arg_flow(arg, id_val, idx, last_blk, to_blk),
         idx = last_arg+1 ,ssa_depens_complete(id_val, args_val, sv_val, sndr_val),
         // Fix for twenty.sol, it is possible that the new argument is tainted by msg.sendr via another argument which is itself (only) tainted by msg.sender
        
-        sndr_dep_complete = sndr_val bor (args_val band args_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
+        sndr_dep_complete = sndr_val bor ((args_val band args_sndr) bor (sv_val band sv_sndr)), // there could be a direct dependency on msg.sender or indirect via an argument
         safe_sndr = -(state band 3)/2, // wil be 0b1...1 if state > 1 i.e. privileged. We only take the first two bits due to untrusted state 5 (0b101)          
         sndr_val_comp = sndr_dep_complete band (bnot safe_sndr),
 
         arg_taint_dep = args_val band (args_tainted band (bnot args_sndr)),
-        sv_taint_dep = sv_val band sv_tainted, 
+        sv_taint_dep = sv_val band (sv_tainted band (bnot sv_sndr)), 
         (
             (activate_imp = 1, mustPassThru(imp_blk, last_blk));
             (activate_imp = 0, !mustPassThru(imp_blk, last_blk))
@@ -894,7 +894,7 @@ program_run(to_blk, sv_tainted bor imp_taint, 0, 0, -1, 0, 0 , 0, "", hs+1, stac
     !hasSelfDestruct(last_blk), 
     sv_tainted != 0,
     currhist = cat(cat(prehist, "=>"), to_blk),
-    hs < 16. 
+    hs < 8. 
 
 // return to privileged user from unprivileged user return (privileged user does not introduce user input taint -> no need for arg_setup_blk)
 program_run(to_blk, sv_tainted bor imp_taint, 0, 2, -1, 0, 0, 0, "", hs+1, nil, currhist) :- 
@@ -908,14 +908,14 @@ program_run(to_blk, sv_tainted bor imp_taint, 0, 2, -1, 0, 0, 0, "", hs+1, nil, 
     currhist = cat(cat(prehist, "=>"), to_blk),
     state < 2,
     sv_tainted != 0,
-    hs > 1, hs < 16. 
+    hs > 1, hs < 8. 
 
 // setup arguments inside argument setup block
 program_run(last_blk, sv_tainted, args_tainted bor arg_taint, 0, idx, args_sndr, sv_sndr, 0, "", hs, stack, prehist) :- 
     program_run(last_blk, sv_tainted, args_tainted, 0, last_arg, args_sndr, sv_sndr,  _, _, hs, stack, prehist), 
     arg_setup_blk(last_blk),  // if you append new history here, this rule will run forever and program will crash
     argument(id, substr(last_blk, 3, strlen(last_blk)),idx), idx=last_arg+1, arg_bv(arg_taint, id),  // no need to worry about the case where there is no arguments 
-    hs < 16. 
+    hs < 8. 
 
 // ******************* END: FUNCTION EXECUTION FINISHED *******************
 
@@ -936,7 +936,7 @@ tainted_sinks("id"), debug_info(last_blk, sv_tainted, args_tainted, state, la, a
                     is_tainted != 0.
 
 .output debug_info
-//.output program_run
+.output program_run
 .output tainted_sinks
 //.output blockFollows
 //.output arg_setup_blk
