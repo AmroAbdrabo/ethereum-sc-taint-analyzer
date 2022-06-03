@@ -361,7 +361,7 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
         // If we are transferring a value from an antiguarded state, we propagate the taint on the argument we are transferring
 
         // Tainted msg.sender dependency 
-        sndr_dep_complete = sndr_val bor (args_val band args_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
+        sndr_dep_complete = sndr_val bor (args_val band args_sndr) bor (sv_val band sv_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
         safe_sndr = -(state band 3)/2, // wil be 0b1...1 if state > 1 i.e. privileged. We only take the first two bits due to untrusted state 5 (0b101)        
         sndr_val_comp = sndr_dep_complete band (bnot safe_sndr),
 
@@ -369,7 +369,7 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
         arg_taint_dep = args_val band (args_tainted band (bnot args_sndr)),
         
         // Tainted SV dependency
-        sv_taint_dep = sv_val band sv_tainted,
+        sv_taint_dep = sv_val band (sv_tainted band (bnot sv_sndr)),
 
         // Implicit taint dependency 
         (
@@ -402,9 +402,9 @@ program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, final_s
         (
             (
                 block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),
-                sndr_val = sndr_dep bor (arg_dep band args_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
+                sndr_val = sndr_dep bor (arg_dep band args_sndr) bor (state_dep band sv_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
                 arg_taint_dep = arg_dep band (args_tainted band (bnot args_sndr)), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
-                sv_taint_dep = state_dep band sv_tainted,
+                sv_taint_dep = state_dep band (sv_tainted band (bnot sv_sndr)),
                 non_sndr_taint = arg_taint_dep bor sv_taint_dep,
                 is_sv_tainted = non_sndr_taint bor sndr_val,
                 sv_bv(bv, field),
@@ -432,7 +432,7 @@ program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, final_s
             (   
                 conditioned_block(last_blk, guard_sv_dep, guard_arg_dep, guard_sndr_dep),
                 (
-                    guard_sndr_dep_comp = guard_sndr_dep bor (args_sndr band guard_arg_dep),
+                    guard_sndr_dep_comp = guard_sndr_dep bor (args_sndr band guard_arg_dep) bor (sv_sndr band guard_sv_dep),
                     args_tainted_cond = (guard_arg_dep band args_tainted) band (bnot args_sndr), 
                     sv_tainted_cond   = (guard_sv_dep band sv_tainted) band (bnot sv_sndr),
                     is_tainted = args_tainted_cond bor sv_tainted_cond, // For conditionals, we examine taint coming only from non-sndr sources? 
@@ -463,9 +463,9 @@ program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, final_sndr,  0,
         (
             (
                 block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),
-                sndr_val = sndr_dep bor (arg_dep band args_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
+                sndr_val = sndr_dep bor (arg_dep band args_sndr) bor (state_dep band sv_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
                 arg_taint_dep = arg_dep band (args_tainted band (bnot args_sndr)), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
-                sv_taint_dep = state_dep band sv_tainted,
+                sv_taint_dep = state_dep band (sv_tainted band (bnot sv_sndr)),
                 non_sndr_taint = arg_taint_dep bor sv_taint_dep,
                 is_sv_tainted = non_sndr_taint bor sndr_val,
                 sv_bv(bv, field),
@@ -491,7 +491,7 @@ program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, final_sndr,  0,
                     (   
                         conditioned_block(last_blk, guard_sv_dep, guard_arg_dep, guard_sndr_dep),
                         (
-                            guard_sndr_dep_comp = guard_sndr_dep bor (args_sndr band guard_arg_dep), 
+                            guard_sndr_dep_comp = guard_sndr_dep bor (args_sndr band guard_arg_dep) bor (sv_sndr band guard_sv_dep), 
                             args_tainted_cond = (guard_arg_dep band args_tainted) band (bnot args_sndr), 
                             sv_tainted_cond   = (guard_sv_dep band sv_tainted) band (bnot sv_sndr),
                             is_tainted = args_tainted_cond bor sv_tainted_cond, // For conditionals, we examine taint coming only from non-sndr sources? 
@@ -579,7 +579,7 @@ program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, sv_sndr
                 // notice sndr is not considered a taint
                 block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),
                 arg_taint_dep = arg_dep band (args_tainted band (bnot args_sndr)), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
-                sv_taint_dep = state_dep band sv_tainted,
+                sv_taint_dep = state_dep band (sv_tainted band (bnot sv_sndr)),
                 is_sv_val_taint = (arg_taint_dep bor sv_taint_dep),
                 sv_bv(bv, field),
                 (
@@ -601,7 +601,7 @@ program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, sv_sndr
             (   
                 conditioned_block(last_blk, guard_sv_dep, guard_arg_dep, guard_sndr_dep),
                 (
-                    guard_sndr_dep_comp = guard_sndr_dep bor (args_sndr band guard_arg_dep),
+                    guard_sndr_dep_comp = guard_sndr_dep bor (args_sndr band guard_arg_dep) bor (sv_sndr band guard_sv_dep),
                     args_tainted_cond = (guard_arg_dep band args_tainted) band (bnot args_sndr), 
                     sv_tainted_cond   = (guard_sv_dep band sv_tainted) band (bnot sv_sndr),
                     is_tainted = args_tainted_cond bor sv_tainted_cond, // For conditionals, we examine taint coming only from non-sndr sources? 
@@ -633,7 +633,7 @@ program_run(to_blk, final_state, args_tainted, 2, -1, args_sndr, sv_sndr, 0, "",
             (
                 block_modifies_sv(to_blk, field, state_dep, arg_dep, _),
                 arg_taint_dep = arg_dep band (args_tainted band (bnot args_sndr)), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
-                sv_taint_dep = state_dep band sv_tainted,
+                sv_taint_dep = state_dep band (sv_tainted band (bnot sv_sndr)),
                 is_sv_val_taint = arg_taint_dep bor sv_taint_dep,
                 sv_bv(bv, field), 
                 (   
@@ -662,7 +662,7 @@ program_run(to_blk, final_state, args_tainted, 3, -1, args_sndr, sv_sndr, final_
             (
                 block_modifies_sv(to_blk, field, state_dep, arg_dep, _),
                 arg_taint_dep = arg_dep band (args_tainted band (bnot args_sndr)), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
-                sv_taint_dep = state_dep band sv_tainted,
+                sv_taint_dep = state_dep band (sv_tainted band (bnot sv_sndr)),
                 is_sv_val_taint = arg_taint_dep bor sv_taint_dep,
                 sv_bv(bv, field), 
                 (   
@@ -692,12 +692,12 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
         ssa_depens_complete(id_val, args_val, sv_val, sndr_val),
         // Implicitly taint everything stemming from a anti-guarded state
         
-        sndr_dep_complete = sndr_val bor (args_val band args_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
+        sndr_dep_complete = sndr_val bor (args_val band args_sndr) bor (sv_val band sv_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
         safe_sndr = -(state band 3)/2, // wil be 0b1...1 if state > 1 i.e. privileged. We only take the first two bits due to untrusted state 5 (0b101)          
         sndr_val_comp = sndr_dep_complete band (bnot safe_sndr),
 
         arg_taint_dep = args_val band (args_tainted band (bnot args_sndr)),
-        sv_taint_dep = sv_val band sv_tainted, 
+        sv_taint_dep = sv_val band (sv_tainted band (bnot sv_sndr)), 
         //is_imp_tainted = -1*(state band 1),  // TODO (done) Remove this 
         non_sndr_taint = arg_taint_dep bor sv_taint_dep, // since we remain here inside the context of the if statement, consts are still clean (see twelve)
         is_id_val_taint = non_sndr_taint bor sndr_val_comp, // sndr_val_comp is equiv. to sndr_dep_complete only if untrusted senter
@@ -727,11 +727,11 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr,
          (
             (
                 block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),
-                sndr_dep_complete = sndr_dep bor (arg_dep band args_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
+                sndr_dep_complete = sndr_dep bor (arg_dep band args_sndr) bor (state_dep band sv_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
                 safe_sndr = -(state band 3)/2, // wil be 0b1...1 if state > 1 i.e. privileged. We only take the first two bits due to untrusted state 5 (0b101)          
                 sndr_val = sndr_dep_complete band (bnot safe_sndr),
                 arg_taint_dep = arg_dep band (args_tainted band (bnot args_sndr)), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
-                sv_taint_dep = state_dep band sv_tainted,
+                sv_taint_dep = state_dep band (sv_tainted band (bnot sv_sndr)),
                 non_sndr_taint = arg_taint_dep bor sv_taint_dep,
                 is_sv_tainted = non_sndr_taint bor sndr_val,
                 sv_bv(bv, field),
@@ -770,11 +770,11 @@ program_run(to_blk, final_state, args_tainted, state band 2, -1, args_sndr, fina
         (
             (
                 block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),
-                sndr_dep_complete = sndr_dep bor (arg_dep band args_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
+                sndr_dep_complete = sndr_dep bor (arg_dep band args_sndr) bor (state_dep band sv_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
                 safe_sndr = -(state band 3)/2, // wil be 0b1...1 if state > 1 i.e. privileged. We only take the first two bits due to untrusted state 5 (0b101)          
                 sndr_val = sndr_dep_complete band (bnot safe_sndr),
                 arg_taint_dep = arg_dep band (args_tainted band (bnot args_sndr)), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
-                sv_taint_dep = state_dep band sv_tainted,
+                sv_taint_dep = state_dep band (sv_tainted band (bnot sv_sndr)),
                 non_sndr_taint = arg_taint_dep bor sv_taint_dep,
                 is_sv_tainted = non_sndr_taint bor sndr_val,
                 sv_bv(bv, field),
@@ -810,11 +810,11 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr,
         (
             (
                 block_modifies_sv(to_blk, field, state_dep, arg_dep, sndr_dep),
-                sndr_dep_complete = sndr_dep bor (arg_dep band args_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
+                sndr_dep_complete = sndr_dep bor (arg_dep band args_sndr) bor (state_dep band sv_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
                 safe_sndr = -(state band 3)/2, // wil be 0b1...1 if state > 1 i.e. privileged. We only take the first two bits due to untrusted state 5 (0b101)          
                 sndr_val = sndr_dep_complete band (bnot safe_sndr),
                 arg_taint_dep = arg_dep band (args_tainted band (bnot args_sndr)), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
-                sv_taint_dep = state_dep band sv_tainted,
+                sv_taint_dep = state_dep band (sv_tainted band (bnot sv_sndr)),
                 non_sndr_taint = arg_taint_dep bor sv_taint_dep,
                 is_sv_tainted = non_sndr_taint bor sndr_val,
                 sv_bv(bv, field),
@@ -845,12 +845,12 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
         idx = last_arg+1 ,ssa_depens_complete(id_val, args_val, sv_val, sndr_val),
         // Fix for twenty.sol, it is possible that the new argument is tainted by msg.sendr via another argument which is itself (only) tainted by msg.sender
        
-        sndr_dep_complete = sndr_val bor (args_val band args_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
+        sndr_dep_complete = sndr_val bor ((args_val band args_sndr) bor (sv_val band sv_sndr)), // there could be a direct dependency on msg.sender or indirect via an argument
         safe_sndr = -(state band 3)/2, // wil be 0b1...1 if state > 1 i.e. privileged. We only take the first two bits due to untrusted state 5 (0b101)          
         sndr_val_comp = sndr_dep_complete band (bnot safe_sndr),
 
         arg_taint_dep = args_val band (args_tainted band (bnot args_sndr)),
-        sv_taint_dep = sv_val band sv_tainted, 
+        sv_taint_dep = sv_val band (sv_tainted band (bnot sv_sndr)), 
         (
             (activate_imp = 1, mustPassThru(imp_blk, last_blk));
             (activate_imp = 0, !mustPassThru(imp_blk, last_blk))
