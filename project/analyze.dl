@@ -841,8 +841,8 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
         arg_taint_dep = args_val band (args_tainted band (bnot args_sndr)),
         sv_taint_dep = sv_val band sv_tainted, 
         (
-            (activate_imp = 1, mustPassThru(imp_blk, to_blk));
-            (activate_imp = 0, !mustPassThru(imp_blk, to_blk))
+            (activate_imp = 1, mustPassThru(imp_blk, last_blk));
+            (activate_imp = 0, !mustPassThru(imp_blk, last_blk))
         ),
         is_imp_tainted = -1*(state band 1)*activate_imp, // TODO mulitply by y where y is 1 if it is a point of convergence, 0 o/w
         
