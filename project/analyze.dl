@@ -447,7 +447,7 @@ program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, final_s
 // Since we are in the unprivileged state, we need to make sure there is no guard 
 // As we are moving to a node of convergence (of all tainted if branches), the state will be normal again and the imp_taint vars will all be reset
 // final_imp_taint = 0, final_imp_blk = "", state_end = 0
-// TODO: transition to state 0 from current state is 5 if there exists at least one unguarded branch (only allow to get thru guard if current state is 5)
+// TODO (done): transition to state 0 from current state is 5 if there exists at least one unguarded branch (only allow to get thru guard if current state is 5)
 program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, final_sndr,  0, "", hs+1, stack, currhist), attackable(attblk) :- 
         program_run(last_blk, sv_tainted, args_tainted, prog_state, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
@@ -507,7 +507,7 @@ program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, final_sndr,  0,
 
 // Case 1.2: antiguarded unprivileged state 
 // This case happens if we are currently in the anti-guarded state but do NOT encounter the end of the ctrl flow induced by the tainted if-condition 
-// TODO: If there is a guard to state 5 instead of 1
+// TODO (done): If there is a guard to state 5 instead of 1
 program_run(to_blk, final_state, args_tainted, new_state, -1, args_sndr, final_sndr, final_imp_taint, imp_blk, hs+1, stack, currhist) :- 
         program_run(last_blk, sv_tainted, args_tainted, 1, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
@@ -757,8 +757,8 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr,
 
 // Return ctrl transfer 
 // R1.1, for this case we assume we have arrived at a leaf node of a tainted ctrl-flow induced by a tainted if condition
-// TODO: new state should be banded by 3 (0b11) to remove ag priv
-program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr, 0, "", hs+1, new_stack, currhist) :-  // remove implicit flag by banding by -2
+// TODO (done): new state should be banded by 3 (0b11) to remove ag priv. Note: it was banded by 2 to remove implicit taint flag (first bit) and also arg priv flag (third bit)
+program_run(to_blk, final_state, args_tainted, state band 2, -1, args_sndr, final_sndr, 0, "", hs+1, new_stack, currhist) :-  // remove implicit flag by banding by -2
          program_run(last_blk, sv_tainted, args_tainted, state, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
