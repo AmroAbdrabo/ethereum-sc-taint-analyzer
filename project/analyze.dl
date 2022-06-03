@@ -326,6 +326,10 @@ doesNotPassThru(a, c) :- blockFollows(a,b),  doesNotPassThru(b, c), a!=c.
 mustPassThru(a, b):- branch(_, _, a, _, _, _), !doesNotPassThru(a, b), blockFollowsClosed(a,b), a!=b.
 //mustPassThru("", ""). // sentinel block
 
+// If an attacker can execute one branching from the conditioned block imp_blk (i.e. at least one branching of imp_blk is unguarded)
+//.decl attackable(imp_blk: Block)
+
+
 // ****************** PROGRAM RUN STATE MACHINE ******************
 
 // State 0: unguarded -  00
@@ -364,7 +368,11 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
         sv_taint_dep = sv_val band sv_tainted,
 
         // Implicit taint dependency 
-        is_imp_tainted = -1*(state band 1), // TODO mulitply by y where y is 1 if it is a point of convergence, 0 o/w 
+        (
+            (activate_imp = 1, mustPassThru(imp_blk, to_blk));
+            (activate_imp = 0, !mustPassThru(imp_blk, to_blk))
+        ),
+        is_imp_tainted = -1*(state band 1)*activate_imp, // TODO (done) mulitply by y where y is 1 if it is a point of convergence, 0 o/w 
 
         non_sndr_taint = arg_taint_dep bor sv_taint_dep bor is_imp_tainted, // since we remain here inside the context of the if statement, consts are still clean (see twelve)
         is_id_val_taint = non_sndr_taint bor sndr_val_comp, // sndr_val_comp is equiv. to sndr_dep_complete only if untrusted senter
@@ -439,7 +447,7 @@ program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, final_s
 // Since we are in the unprivileged state, we need to make sure there is no guard 
 // As we are moving to a node of convergence (of all tainted if branches), the state will be normal again and the imp_taint vars will all be reset
 // final_imp_taint = 0, final_imp_blk = "", state_end = 0
-// TODO: transition to state 0 even if current state is 5 (only allow to get thru guard if current state is 5)
+// TODO: transition to state 0 from current state is 5 if there exists at least one unguarded branch (only allow to get thru guard if current state is 5)
 program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, final_sndr,  0, "", hs+1, stack, currhist) :- 
         program_run(last_blk, sv_tainted, args_tainted, 1, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack, prehist), (
             num_args(last_blk, to_blk, last_arg+1);
@@ -471,7 +479,7 @@ program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, final_sndr,  0,
                 !doesModify(to_blk), final_state = sv_tainted bor imp_taint, final_sndr = sv_sndr
             )
         ), 
-        /*(
+        (
             // Make sure there is no guard at last_blk preventing ctrl-flow from passing to the to_blk
             unconditioned_block(last_blk);
             (   
@@ -484,7 +492,7 @@ program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, final_sndr,  0,
                     (is_tainted != 0; guard_sndr_dep_comp = 0) // To not be a guard, either there is NO dep. on sndr or there is a taint from non-sndr sources
                 )
             )
-        ),*/
+        ),
         currhist = cat(cat(prehist, ","), to_blk),
         hs < 16.
 
@@ -525,7 +533,7 @@ program_run(to_blk, final_state, args_tainted, 1, -1, args_sndr, final_sndr, fin
                 !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = imp_taint, final_sndr = sv_sndr
             )
         ), 
-        /*(
+        (
             // Make sure there is no guard at last_blk preventing ctrl-flow from passing to the to_blk
             unconditioned_block(last_blk);
             (   
@@ -538,7 +546,7 @@ program_run(to_blk, final_state, args_tainted, 1, -1, args_sndr, final_sndr, fin
                     (is_tainted != 0; guard_sndr_dep_comp = 0) // To not be a guard, either there is NO dep. on sndr or there is a taint from non-sndr sources
                 )
             )
-        ),*/
+        ),
         currhist = cat(cat(prehist, ","), to_blk),
         hs < 16.
 
@@ -677,8 +685,8 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
 
         arg_taint_dep = args_val band (args_tainted band (bnot args_sndr)),
         sv_taint_dep = sv_val band sv_tainted, 
-        is_imp_tainted = -1*(state band 1),  // TODO Remove this 
-        non_sndr_taint = arg_taint_dep bor sv_taint_dep bor is_imp_tainted, // since we remain here inside the context of the if statement, consts are still clean (see twelve)
+        //is_imp_tainted = -1*(state band 1),  // TODO (done) Remove this 
+        non_sndr_taint = arg_taint_dep bor sv_taint_dep, // since we remain here inside the context of the if statement, consts are still clean (see twelve)
         is_id_val_taint = non_sndr_taint bor sndr_val_comp, // sndr_val_comp is equiv. to sndr_dep_complete only if untrusted senter
         arg_bv(bv, arg),
         (
@@ -832,7 +840,11 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
 
         arg_taint_dep = args_val band (args_tainted band (bnot args_sndr)),
         sv_taint_dep = sv_val band sv_tainted, 
-        is_imp_tainted = -1*(state band 1), // TODO mulitply by y where y is 1 if it is a point of convergence, 0 o/w
+        (
+            (activate_imp = 1, mustPassThru(imp_blk, to_blk));
+            (activate_imp = 0, !mustPassThru(imp_blk, to_blk))
+        ),
+        is_imp_tainted = -1*(state band 1)*activate_imp, // TODO mulitply by y where y is 1 if it is a point of convergence, 0 o/w
         
         non_sndr_taint = arg_taint_dep bor sv_taint_dep bor is_imp_tainted, // since we remain here inside the context of the if statement, consts are still clean (see twelve)
         is_id_val_taint = non_sndr_taint bor sndr_val_comp, // sndr_val_comp is equiv. to sndr_dep_complete only if untrusted senter
