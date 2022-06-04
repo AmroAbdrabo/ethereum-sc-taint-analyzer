@@ -328,7 +328,7 @@ doesNotPassThru(a, b) :- (blockFollows(a,c); jump(_, a, _, c)), (blockFollows(a,
 doesNotPassThru(a, c):- block(a), block(c), !blockFPT(a, c), a!=c, !leaf_node(c), !leaf_node(a).
 doesNotPassThru(a, c) :- blockFPT(a,b),  doesNotPassThru(b, c), a!=c.
 .decl mustPassThru(a: Block, b: Block) // signifies that the direct children of A must either pass through B or will be terminated at a leaf, B, of A 
-mustPassThru(a, b):- branch(_, _, a, _, _, _), !doesNotPassThru(a, b), blockFPT(a,b), a!=b.
+mustPassThru(a, b):- branch(_, _, a, _, _, _), !doesNotPassThru(a, b), blockFPT(a,b), a!=b, ((!longBlock(b)); first_mini_blk(parent,b)).
 //mustPassThru("", ""). // sentinel block
 
 // If an attacker can execute one branching from the conditioned block imp_blk (i.e. at least one branching of imp_blk is unguarded)
