@@ -43,6 +43,7 @@ contract Contract {
       }
     }
     y = x || get_bool2(); //  x safe again
+    y = get_bool2();
     return y;
   }
 
