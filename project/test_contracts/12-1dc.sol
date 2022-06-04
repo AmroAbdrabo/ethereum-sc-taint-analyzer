@@ -9,7 +9,7 @@ contract Contract {
       x = address(0xDEADBEEF);
     }
     x = msg.sender;
-    x = address(0xDEADBEEF);
+    //x = address(0xDEADBEEF);
     require(msg.sender == x); // guard
     selfdestruct(msg.sender); // safe
   }
