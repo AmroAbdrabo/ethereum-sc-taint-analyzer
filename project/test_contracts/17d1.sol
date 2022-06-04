@@ -41,7 +41,8 @@ contract Contract {
         x = (unsafe_addr == unsafe_addr);
       }
     }
-    y = get_bool2(); //  x safe again
+    y = x || get_bool2(); //  x safe again
+    y = get_bool2();
     return y;
   }
 
