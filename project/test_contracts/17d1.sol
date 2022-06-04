@@ -39,9 +39,10 @@ contract Contract {
         x= get_bool2(); // x is unsafe after leaving this if-else statement
       }else{
         x = (unsafe_addr == unsafe_addr);
+        //return x;
       }
     }
-    y = get_bool2(); //  x safe again
+    y = x || get_bool2(); //  x safe again
     return y;
   }
 
