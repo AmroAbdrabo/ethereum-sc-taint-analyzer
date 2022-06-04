@@ -17,10 +17,12 @@ contract Contract {
   function get_bool1() public returns(bool){
     bool s;
     s = (safe_addr == unsafe_addr);
+    return s;
   }
   function get_bool2() public returns(bool){
     bool s;
     s = (safe_addr == msg.sender);
+    return  s;
   }
 
   function set_unsafe_int(int i) public {
