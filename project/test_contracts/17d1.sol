@@ -13,12 +13,12 @@ contract Contract {
   function set_unsafe_addr(address a) public {
     unsafe_addr = a;
   }
-
-  function get_bool1() public returns(bool){
+function get_bool1() public returns(bool){
     bool s;
     s = (safe_addr == unsafe_addr);
     return s;
   }
+  
   function get_bool2() public returns(bool){
     bool s;
     s = (safe_addr == msg.sender);
@@ -35,11 +35,8 @@ contract Contract {
     if (safe_int > 5) {
       x= (safe_int == safe_int);
     } else {
-      if (unsafe_int > 3){
-        x= get_bool2(); // x is unsafe after leaving this if-else statement
-      }else{
-        x = (unsafe_addr == unsafe_addr);
-        //return x;
+      if (unsafe_int < 3){
+        x = get_bool2();
       }
     }
     y = x || get_bool2(); //  x safe again

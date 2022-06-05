@@ -175,9 +175,12 @@ unconditioned_block(blk) :- block(blk), !branch(_, _, blk, _, _, _). // !conditi
 // Conditioned but not guarded (i.e. has branch which has no dependence on msg.sender)
 
 // ***************** argument transfer *****************
+.decl edge(start: Block, end: Block) // an edge in the algorithm use of the word (not that the execution of one block will directly succeed another block's)
+edge(start, end) :- blockFollows(start, end) ; (jump(_, start, _, end), !longBlock(end)); (jump(_, start, _,parent), first_mini_blk(parent, end)).
+
 .decl blockFollowsClosed(start: Block, fin: Block)
-blockFollowsClosed(start, fin) :- blockFollows(start, fin); jump(_, start,_, fin).
-blockFollowsClosed(start, fin) :- blockFollows(start, mid), blockFollowsClosed(mid, fin).
+blockFollowsClosed(start, fin) :- edge(start, fin).
+blockFollowsClosed(start, fin) :- blockFollowsClosed(start, mid), blockFollowsClosed(mid, fin).
 
 
 .decl returnFromBlock(srcblk: Block, sinkblk: Block)
@@ -185,10 +188,7 @@ returnFromBlock(start, fin) :- blockFollowsClosed(start, fin), return(_, fin).
 // Imagine the chain B00-J->B01...-R->B02 encoded as jump(_, B00, B01, B02)  then B02-J->B03..-R->B04 and then finally B04 returns to the function which called B00 
 // in this case, returnFromBlock should have the pair B00, B04. Here is how to do this transitively
 
-// Base case
-returnFromBlock(start, fin) :- jump(_, start,_,fin), return(_, fin).
-// Recurse
-returnFromBlock(start, fin) :- jump(_, start,_,cont), returnFromBlock(cont, fin).
+
 //.output transferArgument
 //.output blockFollows
 //.output argument
@@ -319,21 +319,18 @@ doesModify(blk) :- block_modifies_sv(blk, _, _, _, _).
 .decl leaf_node(x: Block)
 leaf_node(x) :- return(_, x); revert(_, x).
 
-// TODO (done): include jump(a, b, cont) -> blockFollow(a, cont)
-.decl blockFPT(a: Block, b: Block)
-blockFPT(a, b) :- blockFollowsClosed(a, b).
-blockFPT(a, b) :-  jump(_, a, _, b).
-blockFPT(a, c) :- blockFPT(a, b), blockFPT(b, c).
+// Define a branch on a higher level (to avoid adapting logic to multistore blocks)
+.decl br_nodes(x: Block, t: Block, f : Block)
+br_nodes(x, t, f) :- edge(x, t), edge(x, f), t != f.
 
-.decl doesNotPassThru(a: Block, b: Block)   // direct children of A do not converge onto B or do not have a leaf node at B
-doesNotPassThru(a, b) :- (blockFollows(a,c); jump(_, a, _, c)), (blockFollows(a,b);jump(_, a, _, b)), c != b, !leaf_node(b), !leaf_node(c).
-doesNotPassThru(a, c):- block(a), block(c), !blockFPT(a, c), a!=c, !leaf_node(c), !leaf_node(a).
-doesNotPassThru(a, c) :- blockFPT(a,b),  doesNotPassThru(b, c), a!=c.
-.decl mustPassThru(a: Block, b: Block) // signifies that the direct children of A must either pass through B or will be terminated at a leaf, B, of A 
-mustPassThru(a, b):- branch(_, _, a, _, _, _), !doesNotPassThru(a, b), blockFPT(a,b), a!=b, !longBlock(b).
-mustPassThru(a, c):- branch(_, _, a, _, _, _), !doesNotPassThru(a, b), blockFPT(a,b), a!=b, first_mini_blk(b,c). 
+// point(s) of convergence of if else branches of a conditional block. Only the first point matters but it doesn't harm to have the points after it
+.decl conv(a: Block, b: Block)
+conv(a, b) :- br_nodes(a, t, f), blockFollowsClosed(t, b), blockFollowsClosed(f, b).
 
-//mustPassThru("", ""). // sentinel block
+// Leaf node which terminates a tainted ctrl flow (induced by a tainted branch condition)
+.decl tainted_leaf(a: Block, b: Block)
+tainted_leaf(a, b) :- leaf_node(b), blockFollowsClosed(a, b), br_nodes(a, _, _).
+
 
 // If an attacker can execute one branching from the conditioned block imp_blk (i.e. at least one branching of imp_blk is unguarded)
 .decl attackable(imp_blk: Block)
@@ -464,7 +461,7 @@ program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, final_sndr,  0,
         ),
         // If the next block is a convergence node (not leaf node, i.e. return or revert) for the tainted if condition, then we exit the tainted state
         // and we transfer the lightly tainted arguments over to the to_blk's  (not lightly) tainted arguments
-        mustPassThru(imp_blk, to_blk), // We are reaching the point of convergence of the tainted ctrl flow
+        conv(imp_blk, to_blk), // We are reaching the point of convergence of the tainted ctrl flow
         blockFollows(last_blk, to_blk), 
         (
             (
@@ -524,7 +521,7 @@ program_run(to_blk, final_state, args_tainted, new_state, -1, args_sndr, final_s
         ),
         // If the next block is a convergence node (not leaf node, i.e. return or revert) for the tainted if condition, then we exit the tainted state
         // and we transfer the lightly tainted arguments over to the to_blk's  (not lightly) tainted arguments
-        !mustPassThru(imp_blk, to_blk), 
+        !conv(imp_blk, to_blk), 
         blockFollows(last_blk, to_blk), 
         (
             (
@@ -636,7 +633,7 @@ program_run(to_blk, final_state, args_tainted, 2, -1, args_sndr, sv_sndr, 0, "",
         ),
         // If the next block is a convergence node (not leaf node, i.e. return or revert) for the tainted if condition, then we exit the tainted state
         // and we transfer the lightly tainted arguments over to the to_blk's  (not lightly) tainted arguments
-        mustPassThru(imp_blk, to_blk), //!(return(_, to_blk); revert(_, to_blk)), 
+        conv(imp_blk, to_blk), //!(return(_, to_blk); revert(_, to_blk)), 
         blockFollows(last_blk, to_blk), 
         (
             (
@@ -666,7 +663,7 @@ program_run(to_blk, final_state, args_tainted, 3, -1, args_sndr, sv_sndr, final_
         ),
         // If the next block is not a convergence node (and not leaf node, i.e. return or revert) for the tainted if condition, then we 
         // continue in the same state we were
-        !mustPassThru(imp_blk, to_blk), 
+        !conv(imp_blk, to_blk), 
         blockFollows(last_blk, to_blk), 
         (
             (
@@ -771,7 +768,7 @@ program_run(to_blk, final_state, args_tainted, state band 2, -1, args_sndr, fina
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
         ),
-        mustPassThru(imp_blk, last_blk), 
+        tainted_leaf(imp_blk, last_blk), 
         return(_, last_blk), stack = [prev_stack, parent_blk],
         (
             (!longBlock(parent_blk), to_blk = parent_blk);
@@ -811,7 +808,7 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr,
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
         ),
-        !mustPassThru(imp_blk, last_blk), 
+        !tainted_leaf(imp_blk, last_blk), 
         return(_, last_blk), stack = [prev_stack, parent_blk], 
         (
             (!longBlock(parent_blk), to_blk = parent_blk);
@@ -934,21 +931,3 @@ tainted_sinks("id") //, debug_info(last_blk, sv_tainted, args_tainted, state, la
                         (is_tainted = has_tainted_arg bor has_tainted_sv, (state = 2; state = 3))
                     ),
                     is_tainted != 0.
-
-//.output debug_info
-//.output program_run
-.output tainted_sinks
-//.output blockFollows
-//.output arg_setup_blk
-//.output num_args
-//.output arg_flow
-//.output ssa_depens_complete
-//.output argument
-//.output conditioned_block
-/*.output blockDominates
-.output blockFollows
-.output hasGuardSSA
-.output unguardedTaintedSSA
-.output guardSSA
-.output taintedSSA
-*/
