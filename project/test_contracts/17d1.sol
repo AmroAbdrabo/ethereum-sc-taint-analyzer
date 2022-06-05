@@ -39,9 +39,9 @@ function get_bool1() public returns(bool){
         x = get_bool2();
       }
     }
-    y = x || get_bool2(); //  x safe again
-    y = get_bool2();
-    return y;
+    //y = x || get_bool2(); //  x safe again
+    //y = get_bool2();
+    return x;
   }
 
   function foo() public {

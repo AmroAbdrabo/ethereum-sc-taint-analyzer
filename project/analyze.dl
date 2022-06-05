@@ -504,7 +504,7 @@ program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, final_sndr,  0,
                 )
             );
             (
-                prog_state = 5, attblk = "", attackable(imp_blk)
+                prog_state = 5, attblk = "s" // "s" is just a sentinel value, it has no meaning other than 5 cannot produce any (meaningful) attack relations
             )
         ),
         hs < 30.
@@ -514,11 +514,11 @@ program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, final_sndr,  0,
 // This case happens if we are currently in the anti-guarded state but do NOT encounter the end of the ctrl flow induced by the tainted if-condition 
 // TODO (done): If there is a guard to state 5 instead of 1
 program_run(to_blk, final_state, args_tainted, new_state, -1, args_sndr, final_sndr, final_imp_taint, imp_blk, hs+1, stack) :- 
-        program_run(last_blk, sv_tainted, args_tainted, 1, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack), 
+        program_run(last_blk, sv_tainted, args_tainted, curr_state, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack), 
         (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
-        ),
+        ), z = curr_state band 3, z = 1, // current state can be 5 or 1
         // If the next block is a convergence node (not leaf node, i.e. return or revert) for the tainted if condition, then we exit the tainted state
         // and we transfer the lightly tainted arguments over to the to_blk's  (not lightly) tainted arguments
         !conv(imp_blk, to_blk), 
@@ -562,7 +562,7 @@ program_run(to_blk, final_state, args_tainted, new_state, -1, args_sndr, final_s
                             (is_tainted != 0; guard_sndr_dep_comp = 0), new_state = 1
                         ); // To not be a guard, either there is NO dep. on sndr or there is a taint from non-sndr sources
                         (
-                            (is_tainted = 0, guard_sndr_dep_comp != 0), new_state = 5
+                            (is_tainted = 0, guard_sndr_dep_comp != 0), new_state = 5, attackable(imp_blk) // make sure non privileged user can go thru (attack) one branch sprouting from imp_blk
                         )
                     )
                 )
