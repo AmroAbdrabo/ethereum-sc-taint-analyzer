@@ -41,7 +41,9 @@ function get_bool1() public returns(bool){
     }
     //y = x || get_bool2(); //  x safe again
     //y = get_bool2();
-    return x;
+    y = (msg.sender == unsafe_addr);
+    //y = (msg.sender == safe_addr);
+    return y;
   }
 
   function foo() public {

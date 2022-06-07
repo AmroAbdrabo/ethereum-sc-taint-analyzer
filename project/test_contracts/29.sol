@@ -7,9 +7,9 @@ contract Contract {
   address b;
   address c;
 
-  /*function set1(address x, int i) public {
+  function set1(address x, int i) public {
     set2(x, i);
-  }*/
+  }
 
   function set2(address x, int i) public {
     set3(x, i);
@@ -33,7 +33,7 @@ contract Contract {
   }
 
   function foo(address x, int i) public {
-    set2(x, i);
+    set1(x, i);
     // if the execution goes through require(msg.sender == c) (a guard), x and i become trusted.
     // otherwise, a remain the old trusted value.
     require(msg.sender == a); // guard
