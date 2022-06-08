@@ -1,7 +1,7 @@
 pragma solidity ^0.5.0;
 
-// the contract is vulnerable
-// the output of your analyzer should be Tainted
+// the contract is safe
+// the output of your analyzer should be Safe
 contract Contract {
   address a;
   address b;
@@ -26,7 +26,7 @@ contract Contract {
 
   function foo(address x) public {
     set1(x);
-    require(msg.sender == a); // not a guard
-    selfdestruct(msg.sender); // vulnerable
+    require(msg.sender == c); // guard
+    selfdestruct(msg.sender); // safe
   }
 }

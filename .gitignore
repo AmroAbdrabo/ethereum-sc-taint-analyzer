@@ -1,3 +1,9 @@
+
+
+
+
+
+
 /venv
 /peck.egg-info
 
@@ -10,6 +16,10 @@ __pycache__
 *.facts
 *.csv
 *.sol
+
+
+*.sol
+
 
 # Mac files
 **/.DS_Store

@@ -12,11 +12,11 @@ contract Contract {
     unsafe_int = i;
   }
 
-  function set1(int i, address payable x) public {
+  /*function set1(int i, address payable x) public {
     if (i > 5) {
       set2(x);
     }
-  }
+  }*/
 
   function set2(address payable x) public {
     set3(x, 2);
