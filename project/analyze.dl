@@ -445,6 +445,7 @@ program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, final_s
                 )
             )
         ),
+        !hasSelfDestruct(last_blk),
         hs < 30.
 
 // Case 1.1: antiguarded unprivileged state 
@@ -507,6 +508,7 @@ program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, final_sndr,  0,
                 prog_state = 5, attblk = "s" // "s" is just a sentinel value, it has no meaning other than 5 cannot produce any (meaningful) attack relations
             )
         ),
+        !hasSelfDestruct(last_blk),
         hs < 30.
 
 
@@ -568,6 +570,7 @@ program_run(to_blk, final_state, args_tainted, new_state, -1, args_sndr, final_s
                 )
             )
         ),
+        !hasSelfDestruct(last_blk),
         hs < 30.
 
 
@@ -617,6 +620,7 @@ program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, sv_sndr
                 )
             )
         ),
+        !hasSelfDestruct(last_blk),
         hs < 30.
 
 // Case 3.1: antiguarded privilege
@@ -651,6 +655,7 @@ program_run(to_blk, final_state, args_tainted, 2, -1, args_sndr, sv_sndr, 0, "",
                 !doesModify(to_blk), final_state = sv_tainted bor imp_taint
             )
         ), 
+        !hasSelfDestruct(last_blk),
         hs < 30.
 
 // Case 3.2: antiguarded privilege
@@ -683,6 +688,7 @@ program_run(to_blk, final_state, args_tainted, 3, -1, args_sndr, sv_sndr, final_
                 !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = imp_taint
             )
         ), 
+        !hasSelfDestruct(last_blk),
         hs < 30.
 
 
@@ -757,6 +763,7 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr,
                 !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = imp_taint, final_sndr = sv_sndr
             )
          ),
+         !hasSelfDestruct(last_blk),
          hs < 30.
 
 
@@ -803,6 +810,7 @@ program_run(to_blk, final_state, args_tainted, state band 2, -1, args_sndr, fina
                 !doesModify(to_blk), final_state = sv_tainted bor imp_taint, final_sndr = sv_sndr
             )
         ),
+        !hasSelfDestruct(last_blk),
         hs < 30.
 
 // Return ctrl transfer 
@@ -844,6 +852,7 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr,
                 !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = imp_taint, final_sndr = sv_sndr 
             )
         ), 
+        !hasSelfDestruct(last_blk),
         hs < 30.
 
 //.output mustPassThru
