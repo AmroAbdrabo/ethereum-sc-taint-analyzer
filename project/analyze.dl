@@ -915,7 +915,7 @@ program_run(to_blk, sv_tainted bor imp_taint, 0, 2, -1, 0, 0, 0, "", hs+1, nil) 
         (!longBlock(parent_blk), to_blk = parent_blk);
         (longBlock(parent_blk), !not_first_store(to_blk, _, parent_blk), store_block(to_blk, parent, _))
     ),
-    (state band 3) < 2,
+    //(state band 3) < 2, commented to allow from pivileged to privileged also
     sv_tainted != 0,
     hs > 1, hs < 30. 
 
