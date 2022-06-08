@@ -347,7 +347,7 @@ tainted_leaf(a, b) :- leaf_node(b), blockFollowsClosed(a, b), br_nodes(a, _, _).
 // *********************** START: Normal ctrl flow (i.e. any ctrl flow other than JMP) *************************
 
 // If we are currently at the argument setup block (for user defined input)  -- removed tainting new record's arguments, see the bottom-most rule
-program_run(to_blk, sv_taint, args_tainted, 0, -1, args_sndr, sv_sndr, imp_taint, imp_blk, hs+1, stack) :-  
+program_run(to_blk, sv_taint, args_tainted, 0, -1, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack) :-  
         program_run(last_blk, sv_taint, args_tainted, 0, -1, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack),
         blockFollows(last_blk, to_blk), arg_setup_blk(to_blk). // guaranteed to be following from constructor (only where we can reach arg_setup_blk is via constructor) 
         
@@ -395,7 +395,7 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
 // Handle state variable taint transfer (ungarded). New: checks first there is NO guard inside last_blk to know if we can still remain in unguarded state 
 
 // Case 0: unguarded non-privileged user
-program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, final_sndr, final_imp_taint, final_imp_blk, hs+1, stack) :- 
+program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, final_sndr, final_imp_taint, final_imp_blk, hs, stack) :- 
         program_run(last_blk, sv_tainted, args_tainted, 0, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
@@ -445,8 +445,7 @@ program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, final_s
                 )
             )
         ),
-        !hasSelfDestruct(last_blk),
-        hs < 30.
+        !hasSelfDestruct(last_blk).
 
 // Case 1.1: antiguarded unprivileged state 
 // This case happens if we are currently in the anti-guarded state and then encounter the end of the ctrl flow induced by the tainted if-condition.
@@ -454,7 +453,7 @@ program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, final_s
 // As we are moving to a node of convergence (of all tainted if branches), the state will be normal again and the imp_taint vars will all be reset
 // final_imp_taint = 0, final_imp_blk = "", state_end = 0
 // TODO (done): transition to state 0 from current state is 5 if there exists at least one unguarded branch (only allow to get thru guard if current state is 5)
-program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, final_sndr,  0, "", hs+1, stack), attackable(attblk) :- 
+program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, final_sndr,  0, "", hs, stack), attackable(attblk) :- 
         program_run(last_blk, sv_tainted, args_tainted, prog_state, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack), 
         (
             num_args(last_blk, to_blk, last_arg+1);
@@ -508,14 +507,13 @@ program_run(to_blk, final_state, args_tainted, 0, -1, args_sndr, final_sndr,  0,
                 prog_state = 5, attblk = "s" // "s" is just a sentinel value, it has no meaning other than 5 cannot produce any (meaningful) attack relations
             )
         ),
-        !hasSelfDestruct(last_blk),
-        hs < 30.
+        !hasSelfDestruct(last_blk).
 
 
 // Case 1.2: antiguarded unprivileged state 
 // This case happens if we are currently in the anti-guarded state but do NOT encounter the end of the ctrl flow induced by the tainted if-condition 
 // TODO (done): If there is a guard to state 5 instead of 1
-program_run(to_blk, final_state, args_tainted, new_state, -1, args_sndr, final_sndr, final_imp_taint, imp_blk, hs+1, stack) :- 
+program_run(to_blk, final_state, args_tainted, new_state, -1, args_sndr, final_sndr, final_imp_taint, imp_blk, hs, stack) :- 
         program_run(last_blk, sv_tainted, args_tainted, curr_state, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack), 
         (
             num_args(last_blk, to_blk, last_arg+1);
@@ -570,12 +568,11 @@ program_run(to_blk, final_state, args_tainted, new_state, -1, args_sndr, final_s
                 )
             )
         ),
-        !hasSelfDestruct(last_blk),
-        hs < 30.
+        !hasSelfDestruct(last_blk).
 
 
 // Case 2: privileged user (no antiguard)
-program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, sv_sndr, final_imp_taint, final_imp_blk,  hs+1, stack) :- 
+program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, sv_sndr, final_imp_taint, final_imp_blk,  hs, stack) :- 
         program_run(last_blk, sv_tainted, args_tainted, 2, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack), 
         (
             num_args(last_blk, to_blk, last_arg+1);
@@ -620,8 +617,7 @@ program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, sv_sndr
                 )
             )
         ),
-        !hasSelfDestruct(last_blk),
-        hs < 30.
+        !hasSelfDestruct(last_blk).
 
 // Case 3.1: antiguarded privilege
 // This case happens if we are currently in the anti-guarded state and then encounter the end of the ctrl flow induced by the tainted if-condition.
@@ -629,7 +625,7 @@ program_run(to_blk, final_state, args_tainted, state_end, -1, args_sndr, sv_sndr
 
 // As we are moving to a node of convergence (of all tainted if branches), the state will be normal again and the imp_taint vars will all be reset
 // we get: final_imp_taint = 0, final_imp_blk = "", state_end = 2
-program_run(to_blk, final_state, args_tainted, 2, -1, args_sndr, sv_sndr, 0, "", hs+1, stack) :- 
+program_run(to_blk, final_state, args_tainted, 2, -1, args_sndr, sv_sndr, 0, "", hs, stack) :- 
         program_run(last_blk, sv_tainted, args_tainted, 3, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack), 
         (
             num_args(last_blk, to_blk, last_arg+1);
@@ -655,12 +651,11 @@ program_run(to_blk, final_state, args_tainted, 2, -1, args_sndr, sv_sndr, 0, "",
                 !doesModify(to_blk), final_state = sv_tainted bor imp_taint
             )
         ), 
-        !hasSelfDestruct(last_blk),
-        hs < 30.
+        !hasSelfDestruct(last_blk).
 
 // Case 3.2: antiguarded privilege
 // This case happens if we are currently in the anti-guarded state but do NOT encounter the end of the ctrl flow induced by the tainted if-condition 
-program_run(to_blk, final_state, args_tainted, 3, -1, args_sndr, sv_sndr, final_imp_taint, imp_blk, hs+1, stack) :- 
+program_run(to_blk, final_state, args_tainted, 3, -1, args_sndr, sv_sndr, final_imp_taint, imp_blk, hs, stack) :- 
         program_run(last_blk, sv_tainted, args_tainted, 3, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack), 
         (
             num_args(last_blk, to_blk, last_arg+1);
@@ -688,8 +683,7 @@ program_run(to_blk, final_state, args_tainted, 3, -1, args_sndr, sv_sndr, final_
                 !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = imp_taint
             )
         ), 
-        !hasSelfDestruct(last_blk),
-        hs < 30.
+        !hasSelfDestruct(last_blk).
 
 
 //.output blockFollows
@@ -764,13 +758,13 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr,
             )
          ),
          !hasSelfDestruct(last_blk),
-         hs < 30.
+         hs < 20.
 
 
 // Return ctrl transfer 
 // R1.1, for this case we assume we have arrived at a leaf node of a tainted ctrl-flow induced by a tainted if condition
 // TODO (done): new state should be banded by 3 (0b11) to remove ag priv. Note: it was banded by 2 to remove implicit taint flag (first bit) and also arg priv flag (third bit)
-program_run(to_blk, final_state, args_tainted, state band 2, -1, args_sndr, final_sndr, 0, "", hs+1, prev_stack), attackable(attackblk) :-  // remove implicit flag by banding by -2
+program_run(to_blk, final_state, args_tainted, state band 2, -1, args_sndr, final_sndr, 0, "", hs-1, prev_stack), attackable(attackblk) :-  // remove implicit flag by banding by -2
          program_run(last_blk, sv_tainted, args_tainted, state, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
@@ -810,12 +804,11 @@ program_run(to_blk, final_state, args_tainted, state band 2, -1, args_sndr, fina
                 !doesModify(to_blk), final_state = sv_tainted bor imp_taint, final_sndr = sv_sndr
             )
         ),
-        !hasSelfDestruct(last_blk),
-        hs < 30.
+        !hasSelfDestruct(last_blk).
 
 // Return ctrl transfer 
 // R1.2, for this case we assume are NOT at a leaf node of a tainted ctrl-flow induced by a tainted if condition
-program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr, final_imp_taint, imp_blk, hs+1, prev_stack) :-  // remove implicit flag by banding by -2
+program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr, final_imp_taint, imp_blk, hs-1, prev_stack) :-  // remove implicit flag by banding by -2
          program_run(last_blk, sv_tainted, args_tainted, state, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
@@ -852,8 +845,7 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr,
                 !doesModify(to_blk), final_state = sv_tainted, final_imp_taint = imp_taint, final_sndr = sv_sndr 
             )
         ), 
-        !hasSelfDestruct(last_blk),
-        hs < 30.
+        !hasSelfDestruct(last_blk).
 
 //.output mustPassThru
 // Return argument transfer
@@ -899,16 +891,15 @@ hasSelfDestruct(blk) :- statement(stmt), blockStmt(blk, stmt), selfdestruct(stmt
 
 
 // return to argument setup block (from normal return). NB: the arguments are reset as untainted
-program_run(to_blk, sv_tainted bor imp_taint, 0, 0, -1, 0, 0 , 0, "", hs+1, stack) :- 
+program_run(to_blk, sv_tainted bor imp_taint, 0, 0, -1, 0, 0 , 0, "", hs, stack) :- 
     program_run(last_blk, sv_tainted, args_tainted, state, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack), 
     return(_, last_blk), stack = nil, arg_setup_blk(to_blk),
     !function(last_blk, "Constructor"),
     !hasSelfDestruct(last_blk), 
-    sv_tainted != 0,
-    hs < 30. 
+    sv_tainted != 0. 
 
 // return to privileged user from unprivileged user return (privileged user does not introduce user input taint -> no need for arg_setup_blk)
-program_run(to_blk, sv_tainted bor imp_taint, 0, 2, -1, 0, 0, 0, "", hs+1, nil) :- 
+program_run(to_blk, sv_tainted bor imp_taint, 0, 2, -1, 0, 0, 0, "", hs, nil) :- 
     program_run(last_blk, sv_tainted, args_tainted, state, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack), 
     return(_, last_blk), stack = nil,
     !function(last_blk, "Constructor"),
@@ -918,27 +909,26 @@ program_run(to_blk, sv_tainted bor imp_taint, 0, 2, -1, 0, 0, 0, "", hs+1, nil) 
         (longBlock(parent_blk), !not_first_store(to_blk, _, parent_blk), store_block(to_blk, parent, _))
     ),
     //(state band 3) < 2, commented to allow from pivileged to privileged also
-    sv_tainted != 0,
-    hs < 30. 
+    sv_tainted != 0.
 
 // setup arguments inside argument setup block
 program_run(last_blk, sv_tainted, args_tainted bor arg_taint, 0, idx, args_sndr, sv_sndr, 0, "", hs, stack) :- 
     program_run(last_blk, sv_tainted, args_tainted, 0, last_arg, args_sndr, sv_sndr,  _, _, hs, stack), 
     arg_setup_blk(last_blk),  // if you append new history here, this rule will run forever and program will crash
-    argument(id, substr(last_blk, 3, strlen(last_blk)),idx), idx=last_arg+1, arg_bv(arg_taint, id),  // no need to worry about the case where there is no arguments 
-    hs < 30. 
+    argument(id, substr(last_blk, 3, strlen(last_blk)),idx), idx=last_arg+1, arg_bv(arg_taint, id).  // no need to worry about the case where there is no arguments 
+     
 
 // ******************* END: FUNCTION EXECUTION FINISHED *******************
 
 
 // ******************* START: SELFDESTRUCT LOGIC *******************
-.decl debug_info(executed_blks: Block, sv_state: number, arg_state: number, guarded: number, la : number, argsndr: number, sv_sndr:number, imp_taint: number, imp_blk: Block, hist_size: number, stack: BlkList)
+//.decl debug_info(executed_blks: Block, sv_state: number, arg_state: number, guarded: number, la : number, argsndr: number, sv_sndr:number, imp_taint: number, imp_blk: Block, hist_size: number, stack: BlkList)
 //debug_info(executed_blks, sv_tainted, args_tainted, state, hs,stack, hist) :- program_run(executed_blks, sv_tainted, args_tainted, state, hs,stack, hist), state = 2.
 
 
 // Note that sv_sndr is already contained inside sv_tainted
 tainted_sinks("id") //, debug_info(last_blk, sv_tainted, args_tainted, state, la, args_sndr, sv_sndr, imp_taint, imp_blk, hs,stack) 
-                    :- selfdestruct(id, addr), program_run(last_blk, sv_tainted, args_tainted, state, la, args_sndr, sv_sndr, imp_taint,imp_blk,  hs,stack), blockStmt(last_blk, id),
+                    :- selfdestruct(id, addr), program_run(last_blk, sv_tainted, args_tainted, state, la, args_sndr, sv_sndr, imp_taint,imp_blk, hs, stack), blockStmt(last_blk, id),
                     ssa_depens_complete(addr, args_dep, sv_dep, sndr), 
                     has_tainted_arg = args_dep band args_tainted, has_tainted_sv = sv_dep band sv_tainted, 
                     (
