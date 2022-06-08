@@ -902,6 +902,7 @@ hasSelfDestruct(blk) :- statement(stmt), blockStmt(blk, stmt), selfdestruct(stmt
 program_run(to_blk, sv_tainted bor imp_taint, 0, 0, -1, 0, 0 , 0, "", hs+1, stack) :- 
     program_run(last_blk, sv_tainted, args_tainted, state, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack), 
     return(_, last_blk), stack = nil, arg_setup_blk(to_blk),
+    !function(last_blk, "Constructor"),
     !hasSelfDestruct(last_blk), 
     sv_tainted != 0,
     hs < 30. 
@@ -910,6 +911,7 @@ program_run(to_blk, sv_tainted bor imp_taint, 0, 0, -1, 0, 0 , 0, "", hs+1, stac
 program_run(to_blk, sv_tainted bor imp_taint, 0, 2, -1, 0, 0, 0, "", hs+1, nil) :- 
     program_run(last_blk, sv_tainted, args_tainted, state, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack), 
     return(_, last_blk), stack = nil,
+    !function(last_blk, "Constructor"),
     function(parent_blk, x), x != "Constructor", !hasSelfDestruct(last_blk),  
     (
         (!longBlock(parent_blk), to_blk = parent_blk);
@@ -917,7 +919,7 @@ program_run(to_blk, sv_tainted bor imp_taint, 0, 2, -1, 0, 0, 0, "", hs+1, nil) 
     ),
     //(state band 3) < 2, commented to allow from pivileged to privileged also
     sv_tainted != 0,
-    hs > 1, hs < 30. 
+    hs < 30. 
 
 // setup arguments inside argument setup block
 program_run(last_blk, sv_tainted, args_tainted bor arg_taint, 0, idx, args_sndr, sv_sndr, 0, "", hs, stack) :- 
