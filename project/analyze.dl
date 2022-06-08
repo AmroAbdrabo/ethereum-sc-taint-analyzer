@@ -763,7 +763,7 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr,
 // Return ctrl transfer 
 // R1.1, for this case we assume we have arrived at a leaf node of a tainted ctrl-flow induced by a tainted if condition
 // TODO (done): new state should be banded by 3 (0b11) to remove ag priv. Note: it was banded by 2 to remove implicit taint flag (first bit) and also arg priv flag (third bit)
-program_run(to_blk, final_state, args_tainted, state band 2, -1, args_sndr, final_sndr, 0, "", hs+1, prev_stack) :-  // remove implicit flag by banding by -2
+program_run(to_blk, final_state, args_tainted, state band 2, -1, args_sndr, final_sndr, 0, "", hs+1, prev_stack), attackable(attackblk) :-  // remove implicit flag by banding by -2
          program_run(last_blk, sv_tainted, args_tainted, state, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
@@ -773,6 +773,10 @@ program_run(to_blk, final_state, args_tainted, state band 2, -1, args_sndr, fina
         (
             (!longBlock(parent_blk), to_blk = parent_blk);
             first_mini_blk(parent_blk, to_blk)
+        ),
+        (
+            (attackblk = imp_blk, state = 1); // imp_blk has a non-guarded branch which can be "attacked" by a unprivileged user
+            (attackblk = "s", state != 1)  // imp_blk not attackable, we use a sentinal value "s" which means "does not produce any meaningful attackable fact"
         ),
         (
             (
