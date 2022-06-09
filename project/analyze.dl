@@ -125,7 +125,7 @@ arg_bv([s0, s1], id) :-         k = 63, s0 = 0, s1 = -2147483648, k = to_number(
 
 
 .decl arg_cnt(cnt:number)
-arg_cnt(cnt) :- cnt = count:{arg_bv(_,_,_)}.
+arg_cnt(cnt) :- cnt = count:{arg_bv(_,_)}.
 
 // Check if something depends only on constants
 .decl depon_const_info(id: SSA)
@@ -135,10 +135,10 @@ depon_const_info(id) :- uop(id, id_orig, _), depon_const_info(id_orig).
 
 .decl ssa_depens_complete(stmt: SSA, args: ArgInt, sv: number, sndr: number) // the things an SSA depends on
 // Base cases
-ssa_depens_complete(id, 0, 0, 0) :- depon_const_info(id).
-ssa_depens_complete(id, s, 0, 0) :- user_input(id, arg), arg_bv(s, arg). // (id, s, 0 , 0, 1)  id_var = id 
-ssa_depens_complete(id, 0, s, 0) :- load(id, field), sv_bv(s, field).
-ssa_depens_complete(id, 0, 0, 1) :- msgSender(id).
+ssa_depens_complete(id, [0,0], 0, 0) :- depon_const_info(id).
+ssa_depens_complete(id, s,     0, 0) :- user_input(id, arg), arg_bv(s, arg). // (id, s, 0 , 0, 1)  id_var = id 
+ssa_depens_complete(id, [0,0], s, 0) :- load(id, field), sv_bv(s, field).
+ssa_depens_complete(id, [0,0], 0, 1) :- msgSender(id).
 
 //.output ssa_depens_complete
 
@@ -313,7 +313,7 @@ blockFollows(setup_blk, sblk) :-  arg_setup_blk(setup_blk), longBlock(fblk), fbl
 // string hist is B00B01
 .decl program_run(last_blk: Block, sv_state: number, arg_state: ArgInt, guarded: number, arg_stack: number, args_sndr: ArgInt, sv_sndr: number, implicit_taint: number,  imp_block: Block, hist_size: number, stack: BlkList) // final state after executing blklist
 // base case
-program_run(constructor_block, 0, [0,0], 0, -1, 0, 0, 0, "",1, nil) :- function(constructor_block, "Constructor").
+program_run(constructor_block, 0, [0,0], 0, -1, [0,0], 0, 0, "",1, nil) :- function(constructor_block, "Constructor").
 
 //.output arg_flow
 .decl hasArg(blk: Block)
@@ -877,7 +877,7 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
         
         non_sndr_taint = arg_taint_dep bor sv_taint_dep bor is_imp_tainted, // since we remain here inside the context of the if statement, consts are still clean (see twelve)
         is_id_val_taint = non_sndr_taint bor sndr_val_comp, // sndr_val_comp is equiv. to sndr_dep_complete only if untrusted senter
-        arg_bv(bv, arg),
+        arg_bv([bv0, bv1], arg),
         (
             (is_id_val_taint != 0, final_arg_state = [bv0 bor args0_tainted, bv1 bor args1_tainted]);
             (is_id_val_taint = 0, final_arg_state =  [(bnot bv0) band args0_tainted, (bnot bv1) band args1_tainted])  // 24.sol sometimes an argument needs to be cleaned b/c same function is called again with clean variable
@@ -897,7 +897,7 @@ hasSelfDestruct(blk) :- statement(stmt), blockStmt(blk, stmt), selfdestruct(stmt
 
 
 // return to argument setup block (from normal return). NB: the arguments are reset as untainted
-program_run(to_blk, sv_tainted bor imp_taint, [0,0], 0, -1, 0, 0 , 0, "", hs, stack) :- 
+program_run(to_blk, sv_tainted bor imp_taint, [0,0], 0, -1, [0,0], 0 , 0, "", hs, stack) :- 
     program_run(last_blk, sv_tainted, args_tainted, state, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack), 
     return(_, last_blk), stack = nil, arg_setup_blk(to_blk),
     !function(last_blk, "Constructor"),
@@ -905,7 +905,7 @@ program_run(to_blk, sv_tainted bor imp_taint, [0,0], 0, -1, 0, 0 , 0, "", hs, st
     sv_tainted != 0. 
 
 // return to privileged user from unprivileged user return (privileged user does not introduce user input taint -> no need for arg_setup_blk)
-program_run(to_blk, sv_tainted bor imp_taint, [0,0], 2, -1, 0, 0, 0, "", hs, nil) :- 
+program_run(to_blk, sv_tainted bor imp_taint, [0,0], 2, -1, [0,0], 0, 0, "", hs, nil) :- 
     program_run(last_blk, sv_tainted, args_tainted, state, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack), 
     return(_, last_blk), stack = nil,
     !function(last_blk, "Constructor"),
@@ -913,7 +913,7 @@ program_run(to_blk, sv_tainted bor imp_taint, [0,0], 2, -1, 0, 0, 0, "", hs, nil
     (
         (!longBlock(parent_blk), to_blk = parent_blk);
         (longBlock(parent_blk), !not_first_store(to_blk, _, parent_blk), store_block(to_blk, parent, _))
-    ),
+    ), 
     //(state band 3) < 2, commented to allow from pivileged to privileged also
     sv_tainted != 0.
 
@@ -934,7 +934,7 @@ program_run(last_blk, sv_tainted, [args0_tainted bor arg0_taint, args1_tainted b
 
 // Note that sv_sndr is already contained inside sv_tainted
 tainted_sinks("id") //, debug_info(last_blk, sv_tainted, args_tainted, state, la, args_sndr, sv_sndr, imp_taint, imp_blk, hs,stack) 
-                    :- selfdestruct(id, addr), program_run(last_blk, sv_tainted, [args0_tainted, args1_tainted], state, la, args_sndr, sv_sndr, imp_taint,imp_blk, hs, stack), blockStmt(last_blk, id),
+                    :- selfdestruct(id, addr), program_run(last_blk, sv_tainted, [args0_tainted, args1_tainted], state, la, [args0_sndr, args1_sndr], sv_sndr, imp_taint,imp_blk, hs, stack), blockStmt(last_blk, id),
                     ssa_depens_complete(addr, [args0_dep, args1_dep], sv_dep, sndr), 
                     has_tainted_arg = (args0_dep band args0_tainted) bor (args1_dep band args1_tainted), has_tainted_sv = sv_dep band sv_tainted, 
                     (
