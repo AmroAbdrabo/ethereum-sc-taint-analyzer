@@ -758,7 +758,7 @@ program_run(to_blk, final_state, args_tainted, state, -1, args_sndr, final_sndr,
             )
          ),
          !hasSelfDestruct(last_blk),
-         hs < 20.
+         hs < 30.
 
 
 // Return ctrl transfer 
@@ -938,3 +938,6 @@ tainted_sinks("id") //, debug_info(last_blk, sv_tainted, args_tainted, state, la
                     is_tainted != 0.
 
 .output tainted_sinks
+.output program_run
+.output blockFollows
+.output edge
