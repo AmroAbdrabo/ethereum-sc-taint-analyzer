@@ -127,6 +127,9 @@ arg_bv([s0, s1], id) :-         k = 63, s0 = 0, s1 = -2147483648, k = to_number(
 .decl arg_cnt(cnt:number)
 arg_cnt(cnt) :- cnt = count:{arg_bv(_,_)}.
 
+.decl cnt_jumps(jumps: number)
+cnt_jumps(cnt + 2) :- cnt = count:{jump(_, _, _, _)}.
+
 // Check if something depends only on constants
 .decl depon_const_info(id: SSA)
 depon_const_info(id) :- const(id, _); ((assign(id, orig);uop(id, orig, _)), depon_const_info(orig)).
@@ -155,7 +158,8 @@ ssa_depens_complete(id, [args0_lhs bor args0_rhs, args1_lhs bor args1_rhs], sv_l
 .decl sv_bv(state: number, field: Name)
 
 // For state variable taint activation
-sv_bv(s, field) :- s = 2^k, k = to_number(substr(field, 1, strlen(field))), store(_, field, _). // one-hot encoding
+sv_bv(s, field) :- k < 31, s = 2^k, k = to_number(substr(field, 1, strlen(field))), store(_, field, _). // one-hot encoding
+sv_bv(s, field) :- k = 31, s = -2147483648, k = to_number(substr(field, 1, strlen(field))), store(_, field, _). // one-hot encoding
 
 // Context of store in a block // B00, S02, 030, 030, 1
 .decl block_modifies_sv(blk: Block, sv: Name, state_dependency: number, arg_dependency: ArgInt, sndr: number)
@@ -764,7 +768,8 @@ program_run(to_blk, final_state, [args0_tainted, args1_tainted], state, -1, [arg
             )
          ),
          !hasSelfDestruct(last_blk),
-         hs < 30.
+         cnt_jumps(adaptive_depth),
+         hs < adaptive_depth.
 
 
 // Return ctrl transfer 
