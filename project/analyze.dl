@@ -89,9 +89,12 @@
 .input builtinVariable
 
 
+
+.type BlkList = [next: BlkList, blk: Block]
+.type ArgInt = [first: number, second: number] // allow support for up to 64 block arguments
+
 // -- output relations --
 .decl tainted_sinks(id: SSA)
-
 
 // Useful (wallah)
 .decl msgSender(id: SSA)
@@ -115,7 +118,11 @@ user_input(id, arg) :- uop(id, orig, _), user_input(orig, arg).
 
 // Given that arguments are used only once we can treat similarly to fields. A01 -> 0030, A00 -> 0001, A02 
 .decl arg_bv(state: number, id_arg: SSA)
-arg_bv(s, id) :- s = 2^k, k = to_number(substr(id, 1, strlen(id))), argument(id, _, _).
+arg_bv(s0, s1, id) :- k < 31, s0 = 2^k, s1 = 0, k = to_number(substr(id, 1, strlen(id))), argument(id, _, _).
+arg_bv(s0, s1, id) :- k = 31, s0 = -2147483648, s1 = 0, k = to_number(substr(id, 1, strlen(id))), argument(id, _, _).
+arg_bv(s0, s1, id) :- k > 31, k < 63, s0 = 0, s1 = 2^(k-32), k = to_number(substr(id, 1, strlen(id))), argument(id, _, _).
+arg_bv(s0, s1, id) :-         k = 63, s0 = 0, s1 = -2147483648, k = to_number(substr(id, 1, strlen(id))), argument(id, _, _).
+
 
 .decl arg_cnt(cnt:number)
 arg_cnt(cnt) :- cnt = count:{arg_bv(_,_)}.
@@ -147,8 +154,6 @@ ssa_depens_complete(id, args_lhs bor args_rhs, sv_lhs bor sv_rhs, sndr_lhs bor s
 
 // For state variable taint activation
 sv_bv(s, field) :- s = 2^k, k = to_number(substr(field, 1, strlen(field))), store(_, field, _). // one-hot encoding
-
-.type BlkList = [next: BlkList, blk: Block]
 
 // Context of store in a block // B00, S02, 030, 030, 1
 .decl block_modifies_sv(blk: Block, sv: Name, state_dependency: number, arg_dependency: number, sndr: number)

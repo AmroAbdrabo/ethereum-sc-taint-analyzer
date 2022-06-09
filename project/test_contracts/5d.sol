@@ -25,7 +25,8 @@ contract Contract {
     b = address(0xDEADBEEF);
     owner = address(0xDEADBEEF);
     if(x < 5) {                  // not a guard
-      selfdestruct(msg.sender);  // vulnerable
+      func3();
+      //selfdestruct(msg.sender);  // vulnerable
     } else {
       require(msg.sender == address(0xDEADBEEF)); // guard
       selfdestruct(msg.sender);                   // safe

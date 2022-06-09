@@ -37,6 +37,7 @@ contract Contract {
 
   function foo() public {
     require(check()); // not a guard
+    //require(msg.sender == msg.sender);
     selfdestruct(msg.sender); // vulnerable
   }
 }

@@ -25,6 +25,7 @@ contract Contract {
     safe_int = 10;
     unsafe_int = i;
     require(msg.sender == unsafe_addr); // not a guard
+    selfdestruct(msg.sender);
   }
 
   function foo(int i) public {

@@ -4,6 +4,8 @@ contract Contract {
   address owner;
   address b;
   function check(address x) public returns(bool) {
+    //return (msg.sender == address(0x5afe));
+    //return (msg.sender == msg.sender);
     return (msg.sender == x);
   }
   function foo() public {

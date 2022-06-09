@@ -39,9 +39,10 @@ function get_bool1() public returns(bool){
         x = get_bool2();
       }
     }
-    //y = x || get_bool2(); //  x safe again
-    //y = get_bool2();
-    y = (msg.sender == unsafe_addr);
+    y = x || get_bool2(); //  x safe again
+    y = get_bool2();
+    y = x || get_bool2();
+    //y = (msg.sender == unsafe_addr);
     //y = (msg.sender == safe_addr);
     return y;
   }

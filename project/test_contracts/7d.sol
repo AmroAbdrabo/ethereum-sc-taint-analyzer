@@ -5,9 +5,9 @@ contract Contract {
   address payable admin;
   int c;
   int x;
-  function setc(int newc) public {
+  /*function setc(int newc) public {
     c = newc;
-  }
+  }*/
   function foo() public {
     x = 15;
     x = c;
