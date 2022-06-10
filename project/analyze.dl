@@ -386,8 +386,8 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
 
         // Tainted argument dependency 
         arg_taint_dep = (args0_val band (args0_tainted band (bnot args0_sndr))) 
-                    bor (args1_val band (args1_tainted band (bnot args1_sndr))),
-                    bor (args2_val band (args2_tainted band (bnot args2_sndr)))
+                    bor (args1_val band (args1_tainted band (bnot args1_sndr)))
+                    bor (args2_val band (args2_tainted band (bnot args2_sndr))),
         // Tainted SV dependency
         sv_taint_dep = sv_val band (sv_tainted band (bnot sv_sndr)),
 
@@ -642,10 +642,10 @@ program_run(to_blk, final_state, [args0_tainted, args1_tainted, args2_tainted], 
         (
             (
                 // notice sndr is not considered a taint
-                block_modifies_sv(to_blk, field, state_dep, [arg0_dep, arg1_dep, arg2_dep], sndr_dep),
+                block_modifies_sv(to_blk, field, state_dep, [arg0_dep, arg1_dep, arg2_dep], _),
                 arg_taint_dep = (arg0_dep band (args0_tainted band (bnot args0_sndr))) bor 
                                 (arg1_dep band (args1_tainted band (bnot args1_sndr))) bor
-                                (arg2_dep band (args2_tainted band (bnot args2_sndr))) bor, // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
+                                (arg2_dep band (args2_tainted band (bnot args2_sndr))), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
                 sv_taint_dep = state_dep band (sv_tainted band (bnot sv_sndr)),
                 is_sv_val_taint = (arg_taint_dep bor sv_taint_dep),
                 sv_bv(bv, field),
@@ -689,8 +689,8 @@ program_run(to_blk, final_state, [args0_tainted, args1_tainted, args2_tainted], 
 
 // As we are moving to a node of convergence (of all tainted if branches), the state will be normal again and the imp_taint vars will all be reset
 // we get: final_imp_taint = 0, final_imp_blk = "", state_end = 2
-program_run(to_blk, final_state, [args0_tainted, args1_tainted], 2, -1, [args0_sndr, args1_sndr], sv_sndr, 0, "", hs, stack) :- 
-        program_run(last_blk, sv_tainted, [args0_tainted, args1_tainted], 3, last_arg, [args0_sndr, args1_sndr], sv_sndr, imp_taint, imp_blk, hs, stack), 
+program_run(to_blk, final_state, [args0_tainted, args1_tainted, args2_tainted], 2, -1, [args0_sndr, args1_sndr, args2_sndr], sv_sndr, 0, "", hs, stack) :- 
+        program_run(last_blk, sv_tainted, [args0_tainted, args1_tainted, args2_tainted], 3, last_arg, [args0_sndr, args1_sndr, args2_sndr], sv_sndr, imp_taint, imp_blk, hs, stack), 
         (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
@@ -701,8 +701,10 @@ program_run(to_blk, final_state, [args0_tainted, args1_tainted], 2, -1, [args0_s
         blockFollows(last_blk, to_blk), 
         (
             (
-                block_modifies_sv(to_blk, field, state_dep, [arg0_dep, arg1_dep], sndr_dep),
-                arg_taint_dep = (arg0_dep band (args0_tainted band (bnot args0_sndr))) bor (arg1_dep band (args1_tainted band (bnot args1_sndr))), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
+                block_modifies_sv(to_blk, field, state_dep, [arg0_dep, arg1_dep, arg2_dep], sndr_dep),
+                arg_taint_dep = (arg0_dep band (args0_tainted band (bnot args0_sndr))) bor 
+                                (arg1_dep band (args1_tainted band (bnot args1_sndr))) bor
+                                (arg2_dep band (args2_tainted band (bnot args2_sndr))), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
                 sv_taint_dep = state_dep band (sv_tainted band (bnot sv_sndr)),
                 is_sv_val_taint = arg_taint_dep bor sv_taint_dep,
                 sv_bv(bv, field), 
@@ -719,8 +721,8 @@ program_run(to_blk, final_state, [args0_tainted, args1_tainted], 2, -1, [args0_s
 
 // Case 3.2: antiguarded privilege
 // This case happens if we are currently in the anti-guarded state but do NOT encounter the end of the ctrl flow induced by the tainted if-condition 
-program_run(to_blk, final_state, [args0_tainted, args1_tainted], 3, -1, [args0_sndr, args1_sndr], sv_sndr, final_imp_taint, imp_blk, hs, stack) :- 
-        program_run(last_blk, sv_tainted, [args0_tainted, args1_tainted], 3, last_arg, [args0_sndr, args1_sndr], sv_sndr, imp_taint, imp_blk, hs, stack), 
+program_run(to_blk, final_state, [args0_tainted, args1_tainted, args2_tainted], 3, -1, [args0_sndr, args1_sndr, args2_sndr], sv_sndr, final_imp_taint, imp_blk, hs, stack) :- 
+        program_run(last_blk, sv_tainted, [args0_tainted, args1_tainted, args2_tainted], 3, last_arg, [args0_sndr, args1_sndr, args2_sndr], sv_sndr, imp_taint, imp_blk, hs, stack), 
         (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
@@ -731,8 +733,10 @@ program_run(to_blk, final_state, [args0_tainted, args1_tainted], 3, -1, [args0_s
         blockFollows(last_blk, to_blk), 
         (
             (
-                block_modifies_sv(to_blk, field, state_dep, [arg0_dep, arg1_dep], _),
-                arg_taint_dep = (arg0_dep band (args0_tainted band (bnot args0_sndr))) bor (arg1_dep band (args1_tainted band (bnot args1_sndr))), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
+                block_modifies_sv(to_blk, field, state_dep, [arg0_dep, arg1_dep, arg2_dep], _),
+                arg_taint_dep = (arg0_dep band (args0_tainted band (bnot args0_sndr))) bor 
+                                (arg1_dep band (args1_tainted band (bnot args1_sndr))) bor
+                                (arg2_dep band (args2_tainted band (bnot args2_sndr))), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
                 sv_taint_dep = state_dep band (sv_tainted band (bnot sv_sndr)),
                 is_sv_val_taint = arg_taint_dep bor sv_taint_dep,
                 sv_bv(bv, field), 
@@ -754,38 +758,44 @@ program_run(to_blk, final_state, [args0_tainted, args1_tainted], 3, -1, [args0_s
 //  ******************* START: JUMP LOGIC  *******************
 // Handle jump arguments and stack (ungarded). Amro: removed the stack from here since it was being done in the JMP CTRL transfer below
 program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack) :- 
-        program_run(last_blk, sv_tainted, [args0_tainted, args1_tainted], state, last_arg, [args0_sndr, args1_sndr], sv_sndr, imp_taint, imp_blk, hs, stack),
+        program_run(last_blk, sv_tainted, [args0_tainted, args1_tainted, args2_tainted], state, last_arg, [args0_sndr, args1_sndr, args2_sndr], sv_sndr, imp_taint, imp_blk, hs, stack),
         jump(_, last_blk, to_blk, cont_blk), idx = last_arg + 1,
         (
             (arg_flow(arg, id_val, idx, last_blk, to_blk), !longBlock(to_blk));
             (arg_flow(arg, id_val, idx, last_blk, child), first_mini_blk(to_blk, child))
         ), 
-        ssa_depens_complete(id_val, [args0_val, args1_val], sv_val, sndr_val),
+        ssa_depens_complete(id_val, [args0_val, args1_val, args2_val], sv_val, sndr_val),
         // Implicitly taint everything stemming from a anti-guarded state
         
-        sndr_dep_complete = sndr_val bor (args0_val band args0_sndr) bor (args1_val band args1_sndr) bor (sv_val band sv_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
+        sndr_dep_complete = sndr_val bor 
+            (args0_val band args0_sndr) bor 
+            (args1_val band args1_sndr) bor
+            (args2_val band args2_sndr) bor 
+            (sv_val band sv_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
         safe_sndr = -(state band 3)/2, // wil be 0b1...1 if state > 1 i.e. privileged. We only take the first two bits due to untrusted state 5 (0b301)          
         sndr_val_comp = sndr_dep_complete band (bnot safe_sndr),
 
-        arg_taint_dep = (args0_val band (args0_tainted band (bnot args0_sndr))) bor (args1_val band (args1_tainted band (bnot args1_sndr))),
+        arg_taint_dep = (args0_val band (args0_tainted band (bnot args0_sndr))) bor 
+                        (args1_val band (args1_tainted band (bnot args1_sndr))) bor
+                        (args2_val band (args2_tainted band (bnot args2_sndr))),
         sv_taint_dep = sv_val band (sv_tainted band (bnot sv_sndr)), 
         //is_imp_tainted = -1*(state band 1),  // TODO (done) Remove this 
         non_sndr_taint = arg_taint_dep bor sv_taint_dep, // since we remain here inside the context of the if statement, consts are still clean (see twelve)
         is_id_val_taint = non_sndr_taint bor sndr_val_comp, // sndr_val_comp is equiv. to sndr_dep_complete only if untrusted senter
-        arg_bv([bv0, bv1], arg),
+        arg_bv([bv0, bv1, bv2], arg),
         (
-            (is_id_val_taint != 0, final_arg_state = [bv0 bor args0_tainted, bv1 bor args1_tainted]);
-            (is_id_val_taint = 0, final_arg_state =  [(bnot bv0) band args0_tainted, (bnot bv1) band args1_tainted])  // 24.sol sometimes an argument needs to be cleaned b/c same function is called again with clean variable
+            (is_id_val_taint != 0, final_arg_state = [bv0 bor args0_tainted, bv1 bor args1_tainted, bv2 bor args2_tainted]);
+            (is_id_val_taint = 0, final_arg_state =  [(bnot bv0) band args0_tainted, (bnot bv1) band args1_tainted, (bnot bv2) band args2_tainted])  // 24.sol sometimes an argument needs to be cleaned b/c same function is called again with clean variable
         ),
         (   // notice that unlike the is_id_val_taint here, sndr_dep_complete since we want to know if there is a dependency regardless whether msg sender is trusted or not
-            (non_sndr_taint =0, sndr_dep_complete != 0, final_args_sndr = [bv0 bor args0_sndr, bv1 bor args1_sndr]); // if the only taint comes from the sndr, then include it in the bit vector
-            ((non_sndr_taint != 0; sndr_dep_complete = 0), final_args_sndr = [(bnot bv0) band args0_sndr, (bnot bv1) band args1_sndr]) // o/w remove it from args_sndr flag if there is non-sndr taint or no dependence on sndr
+            (non_sndr_taint =0, sndr_dep_complete != 0, final_args_sndr = [bv0 bor args0_sndr, bv1 bor args1_sndr, bv2 bor args2_sndr]); // if the only taint comes from the sndr, then include it in the bit vector
+            ((non_sndr_taint != 0; sndr_dep_complete = 0), final_args_sndr = [(bnot bv0) band args0_sndr, (bnot bv1) band args1_sndr, (bnot bv2) band args2_sndr]) // o/w remove it from args_sndr flag if there is non-sndr taint or no dependence on sndr
         ).
 
 
 // Jump ctrl transfer (longBlock logic to be done later)
-program_run(to_blk, final_state, [args0_tainted, args1_tainted], state, -1, [args0_sndr, args1_sndr], final_sndr, final_imp_taint, imp_blk, hs+1, new_stack) :-   
-         program_run(last_blk, sv_tainted, [args0_tainted, args1_tainted], state, last_arg, [args0_sndr, args1_sndr], sv_sndr, imp_taint, imp_blk, hs, stack), (
+program_run(to_blk, final_state, [args0_tainted, args1_tainted, args2_tainted], state, -1, [args0_sndr, args1_sndr, args2_sndr], final_sndr, final_imp_taint, imp_blk, hs+1, new_stack) :-   
+         program_run(last_blk, sv_tainted, [args0_tainted, args1_tainted, args2_tainted], state, last_arg, [args0_sndr, args1_sndr, args2_sndr], sv_sndr, imp_taint, imp_blk, hs, stack), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _) // either the block we're flowing into does not take arguments or the block we're flowing out of does not provide arguments
         ),
@@ -797,11 +807,17 @@ program_run(to_blk, final_state, [args0_tainted, args1_tainted], state, -1, [arg
          ),
          (
             (
-                block_modifies_sv(to_blk, field, state_dep, [arg0_dep, arg1_dep], sndr_dep),
-                sndr_dep_complete = sndr_dep bor (arg1_dep band args1_sndr) bor (arg0_dep band args0_sndr) bor (state_dep band sv_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
+                block_modifies_sv(to_blk, field, state_dep, [arg0_dep, arg1_dep, arg2_dep], sndr_dep),
+                sndr_dep_complete = sndr_dep bor 
+                    (arg1_dep band args1_sndr) bor 
+                    (arg0_dep band args0_sndr) bor
+                    (arg2_dep band args2_sndr) bor 
+                    (state_dep band sv_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
                 safe_sndr = -(state band 3)/2, // wil be 0b1...1 if state > 1 i.e. privileged. We only take the first two bits due to untrusted state 5 (0b301)          
                 sndr_val = sndr_dep_complete band (bnot safe_sndr),
-                arg_taint_dep = (arg0_dep band (args0_tainted band (bnot args0_sndr))) bor (arg1_dep band (args1_tainted band (bnot args1_sndr))), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
+                arg_taint_dep = (arg0_dep band (args0_tainted band (bnot args0_sndr))) bor 
+                                (arg1_dep band (args1_tainted band (bnot args1_sndr))) bor
+                                (arg2_dep band (args2_tainted band (bnot args2_sndr))), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
                 sv_taint_dep = state_dep band (sv_tainted band (bnot sv_sndr)),
                 non_sndr_taint = arg_taint_dep bor sv_taint_dep,
                 is_sv_tainted = non_sndr_taint bor sndr_val,
@@ -829,8 +845,8 @@ program_run(to_blk, final_state, [args0_tainted, args1_tainted], state, -1, [arg
 // Return ctrl transfer 
 // R1.1, for this case we assume we have arrived at a leaf node of a tainted ctrl-flow induced by a tainted if condition
 // TODO (done): new state should be banded by 3 (0b11) to remove ag priv. Note: it was banded by 2 to remove implicit taint flag (first bit) and also arg priv flag (third bit)
-program_run(to_blk, final_state, [args0_tainted, args1_tainted], state band 2, -1, [args0_sndr, args1_sndr], final_sndr, 0, "", hs-1, prev_stack), attackable(attackblk) :-  // remove implicit flag by banding by -2
-         program_run(last_blk, sv_tainted, [args0_tainted, args1_tainted], state, last_arg, [args0_sndr, args1_sndr], sv_sndr, imp_taint, imp_blk, hs, stack), (
+program_run(to_blk, final_state, [args0_tainted, args1_tainted, args2_tainted], state band 2, -1, [args0_sndr, args1_sndr, args2_sndr], final_sndr, 0, "", hs-1, prev_stack), attackable(attackblk) :-  // remove implicit flag by banding by -2
+         program_run(last_blk, sv_tainted, [args0_tainted, args1_tainted, args2_tainted], state, last_arg, [args0_sndr, args1_sndr, args2_sndr], sv_sndr, imp_taint, imp_blk, hs, stack), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
         ),
@@ -846,11 +862,17 @@ program_run(to_blk, final_state, [args0_tainted, args1_tainted], state band 2, -
         ),
         (
             (
-                block_modifies_sv(to_blk, field, state_dep, [arg0_dep, arg1_dep], sndr_dep),
-                sndr_dep_complete = sndr_dep bor (arg0_dep band args0_sndr) bor (arg1_dep band args1_sndr) bor (state_dep band sv_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
+                block_modifies_sv(to_blk, field, state_dep, [arg0_dep, arg1_dep, arg2_dep], sndr_dep),
+                sndr_dep_complete = sndr_dep bor 
+                    (arg0_dep band args0_sndr) bor 
+                    (arg1_dep band args1_sndr) bor
+                    (arg2_dep band args2_sndr) bor 
+                    (state_dep band sv_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
                 safe_sndr = -(state band 3)/2, // wil be 0b1...1 if state > 1 i.e. privileged. We only take the first two bits due to untrusted state 5 (0b301)          
                 sndr_val = sndr_dep_complete band (bnot safe_sndr),
-                arg_taint_dep = (arg0_dep band (args0_tainted band (bnot args0_sndr))) bor (arg1_dep band (args1_tainted band (bnot args1_sndr))), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
+                arg_taint_dep = (arg0_dep band (args0_tainted band (bnot args0_sndr))) bor 
+                                (arg1_dep band (args1_tainted band (bnot args1_sndr))) bor
+                                (arg2_dep band (args2_tainted band (bnot args2_sndr))), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
                 sv_taint_dep = state_dep band (sv_tainted band (bnot sv_sndr)),
                 non_sndr_taint = arg_taint_dep bor sv_taint_dep,
                 is_sv_tainted = non_sndr_taint bor sndr_val,
@@ -873,8 +895,8 @@ program_run(to_blk, final_state, [args0_tainted, args1_tainted], state band 2, -
 
 // Return ctrl transfer 
 // R1.2, for this case we assume are NOT at a leaf node of a tainted ctrl-flow induced by a tainted if condition
-program_run(to_blk, final_state, [args0_tainted, args1_tainted], state, -1, [args0_sndr, args1_sndr], final_sndr, final_imp_taint, imp_blk, hs-1, prev_stack) :-  // remove implicit flag by banding by -2
-         program_run(last_blk, sv_tainted, [args0_tainted, args1_tainted], state, last_arg, [args0_sndr, args1_sndr], sv_sndr, imp_taint, imp_blk, hs, stack), (
+program_run(to_blk, final_state, [args0_tainted, args1_tainted, args2_tainted], state, -1, [args0_sndr, args1_sndr, args2_sndr], final_sndr, final_imp_taint, imp_blk, hs-1, prev_stack) :-  // remove implicit flag by banding by -2
+         program_run(last_blk, sv_tainted, [args0_tainted, args1_tainted, args2_tainted], state, last_arg, [args0_sndr, args1_sndr, args2_sndr], sv_sndr, imp_taint, imp_blk, hs, stack), (
             num_args(last_blk, to_blk, last_arg+1);
             !num_args(last_blk, to_blk, _)
         ),
@@ -886,11 +908,17 @@ program_run(to_blk, final_state, [args0_tainted, args1_tainted], state, -1, [arg
         ),
         (
             (
-                block_modifies_sv(to_blk, field, state_dep, [arg0_dep, arg1_dep], sndr_dep),
-                sndr_dep_complete = sndr_dep bor (arg0_dep band args0_sndr) bor (arg1_dep band args1_sndr) bor (state_dep band sv_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
+                block_modifies_sv(to_blk, field, state_dep, [arg0_dep, arg1_dep, arg2_dep], sndr_dep),
+                sndr_dep_complete = sndr_dep bor 
+                    (arg0_dep band args0_sndr) bor 
+                    (arg1_dep band args1_sndr) bor
+                    (arg2_dep band args2_sndr) bor 
+                    (state_dep band sv_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
                 safe_sndr = -(state band 3)/2, // wil be 0b1...1 if state > 1 i.e. privileged. We only take the first two bits due to untrusted state 5 (0b301)          
                 sndr_val = sndr_dep_complete band (bnot safe_sndr),
-                arg_taint_dep = (arg0_dep band (args0_tainted band (bnot args0_sndr))) bor (arg1_dep band (args1_tainted band (bnot args1_sndr))), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
+                arg_taint_dep = (arg0_dep band (args0_tainted band (bnot args0_sndr))) bor 
+                                (arg1_dep band (args1_tainted band (bnot args1_sndr))) bor
+                                (arg2_dep band (args2_tainted band (bnot args2_sndr))), // For precision, I made sure to exclude args_sndr since it is taken into account (along with user privilege) in the lines before
                 sv_taint_dep = state_dep band (sv_tainted band (bnot sv_sndr)),
                 non_sndr_taint = arg_taint_dep bor sv_taint_dep,
                 is_sv_tainted = non_sndr_taint bor sndr_val,
@@ -915,18 +943,24 @@ program_run(to_blk, final_state, [args0_tainted, args1_tainted], state, -1, [arg
 //.output mustPassThru
 // Return argument transfer
 program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack) :- 
-        program_run(last_blk, sv_tainted, [args0_tainted, args1_tainted], state, last_arg, [args0_sndr, args1_sndr], sv_sndr, imp_taint, imp_blk, hs, stack),   // 00030   clean it --> 00001 but this DOES NOT MEAN 00030 is gone
+        program_run(last_blk, sv_tainted, [args0_tainted, args1_tainted, args2_tainted], state, last_arg, [args0_sndr, args1_sndr, args2_sndr], sv_sndr, imp_taint, imp_blk, hs, stack),   // 00030   clean it --> 00001 but this DOES NOT MEAN 00030 is gone
         return(_, last_blk), stack = [prev_stack, possible_parent_blk], 
         ((longBlock(possible_parent_blk), first_mini_blk(possible_parent_blk, to_blk));(!longBlock(possible_parent_blk), to_blk = possible_parent_blk)),
         arg_flow(arg, id_val, idx, last_blk, to_blk),
-        idx = last_arg+1 ,ssa_depens_complete(id_val, [args0_val, args1_val], sv_val, sndr_val),
+        idx = last_arg+1 ,ssa_depens_complete(id_val, [args0_val, args1_val, args2_val], sv_val, sndr_val),
         // Fix for twenty.sol, it is possible that the new argument is tainted by msg.sendr via another argument which is itself (only) tainted by msg.sender
        
-        sndr_dep_complete = sndr_val bor (args0_val band args0_sndr) bor (args1_val band args1_sndr) bor (sv_val band sv_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
+        sndr_dep_complete = sndr_val bor 
+            (args0_val band args0_sndr) bor 
+            (args1_val band args1_sndr) bor
+            (args2_val band args2_sndr) bor 
+            (sv_val band sv_sndr), // there could be a direct dependency on msg.sender or indirect via an argument
         safe_sndr = -(state band 3)/2, // wil be 0b1...1 if state > 1 i.e. privileged. We only take the first two bits due to untrusted state 5 (0b301)          
         sndr_val_comp = sndr_dep_complete band (bnot safe_sndr),
 
-        arg_taint_dep = (args0_val band (args0_tainted band (bnot args0_sndr))) bor (args1_val band (args1_tainted band (bnot args1_sndr))),
+        arg_taint_dep = (args0_val band (args0_tainted band (bnot args0_sndr))) bor 
+                        (args1_val band (args1_tainted band (bnot args1_sndr))) bor
+                        (args2_val band (args2_tainted band (bnot args2_sndr))),
         sv_taint_dep = sv_val band (sv_tainted band (bnot sv_sndr)), 
         (
             (activate_imp = 1, tainted_leaf(imp_blk, last_blk));
@@ -936,14 +970,14 @@ program_run(last_blk, sv_tainted, final_arg_state, state, idx, final_args_sndr, 
         
         non_sndr_taint = arg_taint_dep bor sv_taint_dep bor is_imp_tainted, // since we remain here inside the context of the if statement, consts are still clean (see twelve)
         is_id_val_taint = non_sndr_taint bor sndr_val_comp, // sndr_val_comp is equiv. to sndr_dep_complete only if untrusted senter
-        arg_bv([bv0, bv1], arg),
+        arg_bv([bv0, bv1, bv2], arg),
         (
-            (is_id_val_taint != 0, final_arg_state = [bv0 bor args0_tainted, bv1 bor args1_tainted]);
-            (is_id_val_taint = 0, final_arg_state =  [(bnot bv0) band args0_tainted, (bnot bv1) band args1_tainted])  // 24.sol sometimes an argument needs to be cleaned b/c same function is called again with clean variable
+            (is_id_val_taint != 0, final_arg_state = [bv0 bor args0_tainted, bv1 bor args1_tainted, bv2 bor args2_tainted]);
+            (is_id_val_taint = 0, final_arg_state =  [(bnot bv0) band args0_tainted, (bnot bv1) band args1_tainted, (bnot bv2) band args2_tainted])  // 24.sol sometimes an argument needs to be cleaned b/c same function is called again with clean variable
         ),
         (   // notice that unlike the is_id_val_taint here, sndr_dep_complete since we want to know if there is a dependency regardless whether msg sender is trusted or not
-            (non_sndr_taint =0, sndr_dep_complete != 0,  final_args_sndr = [bv0 bor args0_sndr, bv1 bor args1_sndr]); // if the only taint comes from the sndr, then include it in the bit vector
-            ((non_sndr_taint != 0; sndr_dep_complete = 0), final_args_sndr = [(bnot bv0) band args0_sndr, (bnot bv1) band args1_sndr] ) // o/w remove it from args_sndr flag if there is non-sndr taint or no dependence on sndr
+            (non_sndr_taint =0, sndr_dep_complete != 0,  final_args_sndr = [bv0 bor args0_sndr, bv1 bor args1_sndr, bv2 bor args2_sndr]); // if the only taint comes from the sndr, then include it in the bit vector
+            ((non_sndr_taint != 0; sndr_dep_complete = 0), final_args_sndr = [(bnot bv0) band args0_sndr, (bnot bv1) band args1_sndr, (bnot bv2) band args2_sndr] ) // o/w remove it from args_sndr flag if there is non-sndr taint or no dependence on sndr
         ).
 
 //  ******************* END: JUMP LOGIC  *******************
@@ -956,7 +990,7 @@ hasSelfDestruct(blk) :- statement(stmt), blockStmt(blk, stmt), selfdestruct(stmt
 
 
 // return to argument setup block (from normal return). NB: the arguments are reset as untainted
-program_run(to_blk, sv_tainted bor imp_taint, [0,0], 0, -1, [0,0], 0 , 0, "", hs, stack) :- 
+program_run(to_blk, sv_tainted bor imp_taint, [0,0,0], 0, -1, [0,0,0], 0 , 0, "", hs, stack) :- 
     program_run(last_blk, sv_tainted, args_tainted, state, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack), 
     return(_, last_blk), stack = nil, arg_setup_blk(to_blk),
     !function(last_blk, "Constructor"),
@@ -964,7 +998,7 @@ program_run(to_blk, sv_tainted bor imp_taint, [0,0], 0, -1, [0,0], 0 , 0, "", hs
     sv_tainted != 0. 
 
 // return to privileged user from unprivileged user return (privileged user does not introduce user input taint -> no need for arg_setup_blk)
-program_run(to_blk, sv_tainted bor imp_taint, [0,0], 2, -1, [0,0], 0, 0, "", hs, nil) :- 
+program_run(to_blk, sv_tainted bor imp_taint, [0,0,0], 2, -1, [0,0,0], 0, 0, "", hs, nil) :- 
     program_run(last_blk, sv_tainted, args_tainted, state, last_arg, args_sndr, sv_sndr, imp_taint, imp_blk, hs, stack), 
     return(_, last_blk), stack = nil,
     !function(last_blk, "Constructor"),
@@ -977,10 +1011,11 @@ program_run(to_blk, sv_tainted bor imp_taint, [0,0], 2, -1, [0,0], 0, 0, "", hs,
     sv_tainted != 0.
 
 // setup arguments inside argument setup block
-program_run(last_blk, sv_tainted, [args0_tainted bor arg0_taint, args1_tainted bor arg1_taint], 0, idx, args_sndr, sv_sndr, 0, "", hs, stack) :- 
-    program_run(last_blk, sv_tainted, [args0_tainted, args1_tainted], 0, last_arg, args_sndr, sv_sndr,  _, _, hs, stack), 
+program_run(last_blk, sv_tainted, 
+        [args0_tainted bor arg0_taint, args1_tainted bor arg1_taint, args2_tainted bor arg2_taint], 0, idx, args_sndr, sv_sndr, 0, "", hs, stack) :- 
+    program_run(last_blk, sv_tainted, [args0_tainted, args1_tainted, args2_tainted], 0, last_arg, args_sndr, sv_sndr,  _, _, hs, stack), 
     arg_setup_blk(last_blk),  // if you append new history here, this rule will run forever and program will crash
-    argument(id, substr(last_blk, 3, strlen(last_blk)),idx), idx=last_arg+1, arg_bv([arg0_taint, arg1_taint], id).  // no need to worry about the case where there is no arguments 
+    argument(id, substr(last_blk, 3, strlen(last_blk)),idx), idx=last_arg+1, arg_bv([arg0_taint, arg1_taint, arg2_taint], id).  // no need to worry about the case where there is no arguments 
      
 
 // ******************* END: FUNCTION EXECUTION FINISHED *******************
@@ -993,11 +1028,22 @@ program_run(last_blk, sv_tainted, [args0_tainted bor arg0_taint, args1_tainted b
 
 // Note that sv_sndr is already contained inside sv_tainted
 tainted_sinks("id") //, debug_info(last_blk, sv_tainted, args_tainted, state, la, args_sndr, sv_sndr, imp_taint, imp_blk, hs,stack) 
-                    :- selfdestruct(id, addr), program_run(last_blk, sv_tainted, [args0_tainted, args1_tainted], state, la, [args0_sndr, args1_sndr], sv_sndr, imp_taint,imp_blk, hs, stack), blockStmt(last_blk, id),
-                    ssa_depens_complete(addr, [args0_dep, args1_dep], sv_dep, sndr), 
-                    has_tainted_arg = (args0_dep band args0_tainted) bor (args1_dep band args1_tainted), has_tainted_sv = sv_dep band sv_tainted, 
+                    :- selfdestruct(id, addr), 
+                    program_run(last_blk, sv_tainted, [args0_tainted, args1_tainted, args2_tainted], state, la, [args0_sndr, args1_sndr, args2_sndr], sv_sndr, imp_taint,imp_blk, hs, stack), 
+                    blockStmt(last_blk, id),
+                    ssa_depens_complete(addr, [args0_dep, args1_dep, args2_dep], sv_dep, sndr), 
+                    has_tainted_arg = (args0_dep band args0_tainted) bor 
+                                      (args1_dep band args1_tainted) bor
+                                      (args2_dep band args2_tainted), 
+                    has_tainted_sv = sv_dep band sv_tainted, 
                     (
-                        (is_tainted = has_tainted_arg bor has_tainted_sv bor sndr bor (args0_dep band args0_sndr) bor (args1_dep band args1_sndr),(state=0; state=1));
+                        (is_tainted = has_tainted_arg bor has_tainted_sv bor 
+                                      sndr bor 
+                                      (args0_dep band args0_sndr) bor 
+                                      (args1_dep band args1_sndr) bor
+                                      (args2_dep band args2_sndr),
+                                      (state=0; state=1)
+                        );
                         (is_tainted = has_tainted_arg bor has_tainted_sv, (state = 2; state = 3))
                     ),
                     is_tainted != 0.
